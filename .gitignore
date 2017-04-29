@@ -30,6 +30,8 @@ $RECYCLE.BIN/
 
 # Thumbnails
 ._*
+Debug/*
+packages/*
 
 # Files that might appear in the root of a volume
 .DocumentRevisions-V100
@@ -45,3 +47,11 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+*.config
+snek.vcxproj.user
+*.vcxproj
+snek.vcxproj.filters
+*.db
+snek.sln
+*.suo
+snek.VC.VC.opendb
