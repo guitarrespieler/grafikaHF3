@@ -209,18 +209,24 @@ struct vec4 {
 
 mat4 translateMtx(float x, float y, float z){
 	return mat4(
-		0, 0, 0, 0,
-		0, 0, 0, 0,
-		0, 0, 0, 0,
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
 		x, y, z, 1
 	);
 }
 
 class Camera{
+public:
 	vec3 wEye, wLookat, wVup;
 	float fov, asp, fp, bp;
 
-public:
+	float ztrans = 0.0f;
+
+	void zTranslate(float z){
+		wEye.z += z;
+	}
+
 	mat4 V(){
 		vec3 w = (wEye - wLookat).normalize();
 		vec3 u = cross(wVup, w).normalize();
@@ -228,7 +234,7 @@ public:
 
 		vec3 tempVec = wEye * (-1.0f);
 
-		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) *
+		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) * 
 						mat4(u.x, v.x, w.x, 0.0f,
 							 u.y, v.y, w.y, 0.0f,
 							 u.z, v.z, w.z, 0.0f,
@@ -242,13 +248,44 @@ public:
 					0.0f, 0.0f, -(fp + bp) / (bp - fp), -1.0f,
 					0.0f, 0.0f, (-2.0f*fp*bp) / (bp - fp), 0.0f);
 	}
-
-	void Animate(float t){
-		
-	}
 };	
 
+class Avatar{
+public:
+	Camera &cam;
+	float sphereRadius = 50.0f;
+	
+	//lepeshez kellenek
+	boolean isAlive = true;	//ha mar meghalt, nem lepunk majd tobbet
+	float stepIndex = 0;//ennyi egyseget kell lepni eppen
+	float lastT = 0.0f;//utolso animate hivaskor ezt a parametert kaptuk
+
+
+	Avatar(Camera &camera):cam(camera){}
+
+	void move(){
+		stepIndex += 20; //step 100 unit forward
+	}
+
+	void Animate(float t){
+		if (lastT < 0.0001f)
+			lastT = t;
+		float timediff = t - lastT;
+
+		lastT = t;
+		if (stepIndex < 0.00001f) return;
+
+		//nem biztos, hogy jo, ha a wEye-t toljuk el,
+		//majd meglassuk (a vak is ezt mondta)
+		cam.zTranslate(10.0f* timediff);
+
+
+		stepIndex -= 10.0f*timediff;
+	}
+};
+
 Camera camera;
+Avatar avatar = Avatar(camera);
 
 // handle of the shader program
 unsigned int shaderProgram;
@@ -271,7 +308,7 @@ public:
 
 									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { -8, -8, -6, 10, 8, -2 };	// vertex data on the CPU
+		static float vertexCoords[] = { -8, -8,  -6, 10,  8, -2 };	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 					 sizeof(vertexCoords), // number of the vbo in bytes
 					 vertexCoords,		   // address of the data array on the CPU
@@ -332,6 +369,15 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
+	camera.wLookat = vec3(0.0f, 0.0f, -10.0f);
+	camera.wVup = vec3(0.0f, 1.0f, 0.0f);
+	camera.wEye = vec3(0.0f, 0.0f, -30.0f);
+	camera.fov = M_PI / 4.0f; //45 fok
+	camera.asp = windowWidth / windowHeight;
+	camera.fp = 1.0f;
+	camera.bp = 1000.0f;
+
+
 	triangle.Create();
 
 	// Create vertex shader from string
@@ -395,6 +441,9 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
+	if (key == ' '){
+		avatar.move();
+	}
 
 }
 
@@ -409,7 +458,8 @@ void onMouseMotion(int pX, int pY) {}
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
-	camera.Animate(sec);					// animate the camera
+
+	avatar.Animate(sec);
 	triangle.Animate(sec);					// animate the triangle object
 	glutPostRedisplay();					// redraw the scene
 	}
