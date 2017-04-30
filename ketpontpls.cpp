@@ -218,19 +218,18 @@ mat4 translateMtx(float x, float y, float z){
 
 class Camera{
 public:
-	vec3 wLookat = vec3(0.0f, 0.0f, -30.0f);
+	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 0.0f, -60.0f);
+	vec3 wEye = vec3(0.0f, 10.0f, -60.0f);
 
 	float fov = M_PI / 4.0f; //45 fok
 	float asp = windowWidth / windowHeight;
 	float fp = 5.0f;
-	float bp = 1000.0f;
-
-	float ztrans = 0.0f;
+	float bp = 1500.0f;
 
 	void zTranslate(float z){
-		ztrans -= z;
+		wLookat.z += z;
+		wEye.z += z;
 	}
 
 	mat4 V(){
@@ -240,7 +239,7 @@ public:
 
 		vec3 tempVec = wEye * (-1.0f);
 
-		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) * translateMtx(0.0f, 0.0f, ztrans) *
+		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) *
 						mat4(u.x, v.x, w.x, 0.0f,
 							 u.y, v.y, w.y, 0.0f,
 							 u.z, v.z, w.z, 0.0f,
@@ -248,11 +247,11 @@ public:
 	}
 
 	mat4 P(){
-		float sy = 1 / (tanf(fov) / 2.0f);
+		float sy = 1.0f / tanf(fov/2.0f);
 		return mat4(sy / asp, 0.0f, 0.0f, 0.0f,
 					0.0f, sy, 0.0f, 0.0f,
 					0.0f, 0.0f, -(fp + bp) / (bp - fp), -1.0f,
-					0.0f, 0.0f, (-2.0f*fp*bp) / (bp - fp), 0.0f);
+					0.0f, 0.0f, (-(2.0f)*fp*bp) / (bp - fp), 0.0f);
 	}
 };	
 
@@ -289,12 +288,98 @@ public:
 		stepIndex -= 10.0f*timediff;
 	}
 };
-
 Camera camera;
 Avatar avatar = Avatar(camera);
-
 // handle of the shader program
 unsigned int shaderProgram;
+
+class Pallo{
+	unsigned int vao;	// vertex array object id
+
+	//pallo negy csucsanak koordinatai:
+	vec3 balalso  = vec3( 0.0f,  0.0f, 0);
+	vec3 jobbalso = vec3( 1.0f,  0.0f, 0);
+	vec3 balfelso = vec3( 0.0f,  1.0f, 0);
+	vec3 jobbfelso= vec3( 1.0f,  1.0f, 0);
+
+	float angle = M_PI/2.0f;
+	float sx = 10.0f;
+	float sy = 5000.0f;
+	float wTx = 0.0f;
+	float wTy = 0.0f;
+
+
+public:
+	void Create() {
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+		static float vertexCoords[] = { balalso.x, balalso.y, jobbalso.x, jobbalso.y, balfelso.x, balfelso.y,
+										jobbalso.x, jobbalso.y, jobbfelso.x, jobbfelso.y, balfelso.x, balfelso.y};	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+					 sizeof(vertexCoords), // number of the vbo in bytes
+					 vertexCoords,		   // address of the data array on the CPU
+					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0 
+		glVertexAttribPointer(0,			// Attribute Array 0
+							  2, GL_FLOAT,  // components/attribute, component type
+							  GL_FALSE,		// not in fixed point format, do not normalized
+							  0, NULL);     // stride and offset: it is tightly packed
+
+											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		static float vertexColors[] = { 
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16};	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+		}
+	void Draw(){
+		mat4 Mscale(sx, 0, 0, 0,
+					0, sy, 0, 0,
+					0, 0, 0, 0,
+					0, 0, 0, 1); // model matrix
+
+		mat4 Mtranslate(1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, camera.wEye.z, 0,
+						wTx, wTy, 0, 1); // model matrix
+
+		mat4 xRotate(1, 0, 0, 0,
+					 0, cosf(angle), -sinf(angle), 0,
+					 0, sinf(angle), cosf(angle), 0,
+					 0, 0, 0, 1);
+
+		mat4 MVPTransform = Mscale * xRotate * Mtranslate * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
+	}
+};
+
+
+
+
 
 class Triangle {
 	unsigned int vao;	// vertex array object id
@@ -314,7 +399,7 @@ public:
 
 									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { -8, -8,  -6, 10,  8, -2 };	// vertex data on the CPU
+		static float vertexCoords[] = { 0, 0,  10, 0,  10, 10 };	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 					 sizeof(vertexCoords), // number of the vbo in bytes
 					 vertexCoords,		   // address of the data array on the CPU
@@ -369,6 +454,7 @@ public:
 	};
 
 Triangle triangle;
+Pallo pallo;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -376,6 +462,7 @@ void onInitialization() {
 
 	// Create objects by setting up their vertex data on the GPU
 	triangle.Create();
+	pallo.Create();
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -426,7 +513,9 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-	triangle.Draw();
+	//triangle.Draw();
+	pallo.Draw();
+	
 	
 	glutSwapBuffers();									// exchange the two buffers
 	}
@@ -434,13 +523,14 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	if (key == ' ') {
+		avatar.move();
+		}
 	}
 
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
-	if (key == ' '){
-		avatar.move();
-	}
+	
 
 }
 
