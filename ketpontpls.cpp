@@ -218,14 +218,14 @@ mat4 translateMtx(float x, float y, float z){
 
 class Camera{
 public:
-	vec3 wLookat = vec3(0.0f, 0.0f, 0.0f);
+	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 0.0f, -60.0f);
+	vec3 wEye = vec3(0.0f, 10.0f, -60.0f);
 
 	float fov = M_PI / 4.0f; //45 fok
 	float asp = windowWidth / windowHeight;
-	float fp = 0.0f;
-	float bp = 1000.0f;
+	float fp = 5.0f;
+	float bp = 1500.0f;
 
 	void zTranslate(float z){
 		wLookat.z += z;
@@ -302,9 +302,9 @@ class Pallo{
 	vec3 balfelso = vec3( 0.0f,  1.0f, 0);
 	vec3 jobbfelso= vec3( 1.0f,  1.0f, 0);
 
-	float angle = -M_PI/2.1f;
+	float angle = M_PI/2.0f;
 	float sx = 10.0f;
-	float sy = 250.0f;
+	float sy = 5000.0f;
 	float wTx = 0.0f;
 	float wTy = 0.0f;
 
@@ -335,12 +335,13 @@ public:
 
 											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 0.1f, 0.5f, 0.66f,
-			1.0f, 1.0f, 1.0f,
-			0.1f, 0.5f, 0.66f,
-			1.0f, 1.0f, 1.0f,
-			0.1f, 0.5f, 0.66f,
-			0.1f, 0.5f, 0.66f };	// vertex data on the CPU
+		static float vertexColors[] = { 
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16,
+			0.64, 0.16, 0.16};	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
 
 																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
@@ -356,7 +357,7 @@ public:
 
 		mat4 Mtranslate(1, 0, 0, 0,
 						0, 1, 0, 0,
-						0, 0, 0, 0,
+						0, 0, camera.wEye.z, 0,
 						wTx, wTy, 0, 1); // model matrix
 
 		mat4 xRotate(1, 0, 0, 0,
@@ -461,7 +462,7 @@ void onInitialization() {
 
 	// Create objects by setting up their vertex data on the GPU
 	triangle.Create();
-	//pallo.Create();
+	pallo.Create();
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -512,8 +513,8 @@ void onDisplay() {
 	glClearColor(0, 0, 0, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
-	triangle.Draw();
-	//pallo.Draw();
+	//triangle.Draw();
+	pallo.Draw();
 	
 	
 	glutSwapBuffers();									// exchange the two buffers
