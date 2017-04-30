@@ -150,10 +150,48 @@ public:
 	operator float*() { return &m[0][0]; }
 	};
 
+struct vec3 {
+	float x, y, z;
+
+	vec3(float x0 = 0, float y0 = 0, float z0 = 0) { x = x0; y = y0; z = z0; }
+
+	vec3 operator*(float a) const { return vec3(x * a, y * a, z * a); }
+
+	vec3 operator+(const vec3& v) const {
+		return vec3(x + v.x, y + v.y, z + v.z);
+		}
+	vec3 operator-(const vec3& v) const {
+		return vec3(x - v.x, y - v.y, z - v.z);
+		}
+	vec3 operator*(const vec3& v) const {
+		return vec3(x * v.x, y * v.y, z * v.z);
+		}	
+	vec3 operator-() const {
+		return vec3(-x, -y, -z);
+		}
+	vec3 normalize() const {
+		return (*this) * (1 / (Length() + 0.000001));
+		}
+	float Length() const { return sqrtf(x * x + y * y + z * z); }
+
+	operator float*() { return &x; }
+	};
+
+float dot(const vec3& v1, const vec3& v2) {
+	return (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z);
+	}
+
+vec3 cross(const vec3& v1, const vec3& v2) {
+	return vec3(v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z, v1.x * v2.y - v1.y * v2.x);
+	}
 
 // 3D point in homogeneous coordinates
 struct vec4 {
 	float v[4];
+
+	vec4(vec3 vec) {
+		vec4(vec.x, vec.y, vec.z, 1);
+		}
 
 	vec4(float x = 0, float y = 0, float z = 0, float w = 1) {
 		v[0] = x; v[1] = y; v[2] = z; v[3] = w;
@@ -169,52 +207,47 @@ struct vec4 {
 		}
 	};
 
-// 2D camera
-struct Camera {
-	float wCx, wCy;	// center in world coordinates
-	float wWx, wWy;	// width and height in world coordinates
+mat4 translateMtx(float x, float y, float z){
+	return mat4(
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		x, y, z, 1
+	);
+}
+
+class Camera{
+	vec3 wEye, wLookat, wVup;
+	float fov, asp, fp, bp;
+
 public:
-	Camera() {
-		Animate(0);
-		}
+	mat4 V(){
+		vec3 w = (wEye - wLookat).normalize();
+		vec3 u = cross(wVup, w).normalize();
+		vec3 v = cross(w, u);
 
-	mat4 V() { // view matrix: translates the center to the origin
-		return mat4(1, 0, 0, 0,
-					0, 1, 0, 0,
-					0, 0, 1, 0,
-					-wCx, -wCy, 0, 1);
-		}
+		vec3 tempVec = wEye * (-1.0f);
 
-	mat4 P() { // projection matrix: scales it to be a square of edge length 2
-		return mat4(2 / wWx, 0, 0, 0,
-					0, 2 / wWy, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1);
-		}
+		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) *
+						mat4(u.x, v.x, w.x, 0.0f,
+							 u.y, v.y, w.y, 0.0f,
+							 u.z, v.z, w.z, 0.0f,
+							 0.0f, 0.0f, 0.0f, 1.0f);
+	}
 
-	mat4 Vinv() { // inverse view matrix
-		return mat4(1, 0, 0, 0,
-					0, 1, 0, 0,
-					0, 0, 1, 0,
-					wCx, wCy, 0, 1);
-		}
+	mat4 P(){
+		float sy = 1 / (tanf(fov) / 2.0f);
+		return mat4(sy / asp, 0.0f, 0.0f, 0.0f,
+					0.0f, sy, 0.0f, 0.0f,
+					0.0f, 0.0f, -(fp + bp) / (bp - fp), -1.0f,
+					0.0f, 0.0f, (-2.0f*fp*bp) / (bp - fp), 0.0f);
+	}
 
-	mat4 Pinv() { // inverse projection matrix
-		return mat4(wWx / 2, 0, 0, 0,
-					0, wWy / 2, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1);
-		}
+	void Animate(float t){
+		
+	}
+};	
 
-	void Animate(float t) {
-		wCx = 0; // 10 * cosf(t);
-		wCy = 0;
-		wWx = 20;
-		wWy = 20;
-		}
-	};
-
-// 2D camera
 Camera camera;
 
 // handle of the shader program
@@ -292,69 +325,13 @@ public:
 		}
 	};
 
-class LineStrip {
-	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	float  vertexData[100]; // interleaved data of coordinates and colors
-	int    nVertices;       // number of vertices
-public:
-	LineStrip() {
-		nVertices = 0;
-		}
-	void Create() {
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Enable the vertex attribute arrays
-		glEnableVertexAttribArray(0);  // attribute array 0
-		glEnableVertexAttribArray(1);  // attribute array 1
-									   // Map attribute array 0 to the vertex data of the interleaved vbo
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(0)); // attribute array, components/attribute, component type, normalize?, stride, offset
-																										// Map attribute array 1 to the color data of the interleaved vbo
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
-		}
-
-	void AddPoint(float cX, float cY) {
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		if (nVertices >= 20) return;
-
-		vec4 wVertex = vec4(cX, cY, 0, 1) * camera.Pinv() * camera.Vinv();
-		// fill interleaved data
-		vertexData[5 * nVertices] = wVertex.v[0];
-		vertexData[5 * nVertices + 1] = wVertex.v[1];
-		vertexData[5 * nVertices + 2] = 1; // red
-		vertexData[5 * nVertices + 3] = 1; // green
-		vertexData[5 * nVertices + 4] = 0; // blue
-		nVertices++;
-		// copy data to the GPU
-		glBufferData(GL_ARRAY_BUFFER, nVertices * 5 * sizeof(float), vertexData, GL_DYNAMIC_DRAW);
-		}
-
-	void Draw() {
-		if (nVertices > 0) {
-			mat4 VPTransform = camera.V() * camera.P();
-
-			int location = glGetUniformLocation(shaderProgram, "MVP");
-			if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, VPTransform);
-			else printf("uniform MVP cannot be set\n");
-
-			glBindVertexArray(vao);
-			glDrawArrays(GL_LINE_STRIP, 0, nVertices);
-			}
-		}
-	};
-
-// The virtual world: collection of two objects
 Triangle triangle;
-LineStrip lineStrip;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	lineStrip.Create();
 	triangle.Create();
 
 	// Create vertex shader from string
@@ -407,7 +384,7 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
 	triangle.Draw();
-	lineStrip.Draw();
+	
 	glutSwapBuffers();									// exchange the two buffers
 	}
 
@@ -419,17 +396,11 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
 
-	}
+}
 
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
-	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
-		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-		float cY = 1.0f - 2.0f * pY / windowHeight;
-		lineStrip.AddPoint(cX, cY);
-		glutPostRedisplay();     // redraw
-		}
-	}
+}
 
 // Move mouse with key pressed
 void onMouseMotion(int pX, int pY) {}
