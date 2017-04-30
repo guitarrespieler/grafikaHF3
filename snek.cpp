@@ -218,13 +218,19 @@ mat4 translateMtx(float x, float y, float z){
 
 class Camera{
 public:
-	vec3 wEye, wLookat, wVup;
-	float fov, asp, fp, bp;
+	vec3 wLookat = vec3(0.0f, 0.0f, -30.0f);
+	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
+	vec3 wEye = vec3(0.0f, 0.0f, -60.0f);
+
+	float fov = M_PI / 4.0f; //45 fok
+	float asp = windowWidth / windowHeight;
+	float fp = 5.0f;
+	float bp = 1000.0f;
 
 	float ztrans = 0.0f;
 
 	void zTranslate(float z){
-		wEye.z += z;
+		ztrans -= z;
 	}
 
 	mat4 V(){
@@ -234,7 +240,7 @@ public:
 
 		vec3 tempVec = wEye * (-1.0f);
 
-		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) * 
+		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) * translateMtx(0.0f, 0.0f, ztrans) *
 						mat4(u.x, v.x, w.x, 0.0f,
 							 u.y, v.y, w.y, 0.0f,
 							 u.z, v.z, w.z, 0.0f,
@@ -369,15 +375,6 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	camera.wLookat = vec3(0.0f, 0.0f, -10.0f);
-	camera.wVup = vec3(0.0f, 1.0f, 0.0f);
-	camera.wEye = vec3(0.0f, 0.0f, -30.0f);
-	camera.fov = M_PI / 4.0f; //45 fok
-	camera.asp = windowWidth / windowHeight;
-	camera.fp = 1.0f;
-	camera.bp = 1000.0f;
-
-
 	triangle.Create();
 
 	// Create vertex shader from string
