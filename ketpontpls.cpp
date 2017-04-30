@@ -262,7 +262,7 @@ public:
 	float sphereRadius = 50.0f;
 	
 	//lepeshez kellenek
-	boolean isAlive = true;	//ha mar meghalt, nem lepunk majd tobbet
+	bool isAlive = true;	//ha mar meghalt, nem lepunk majd tobbet
 	float stepIndex = 0;//ennyi egyseget kell lepni eppen
 	float lastT = 0.0f;//utolso animate hivaskor ezt a parametert kaptuk
 
