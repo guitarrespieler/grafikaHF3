@@ -300,7 +300,16 @@ class CatmullRomSpline{
 	vec3 Hermite(vec3 p0, vec3 v0, float t0,
 				 vec3 p1, vec3 v1, float t1,
 				 float t){
-		//???
+		
+		vec3 a0 = p0;
+		vec3 a1 = v0;
+		vec3 a2 = ((p1 - p0)* 3.0f * (1.0f / ((t1 - t0)*(t1 - t0)))) -
+			((v1 - v0*2.0f) * (1.0f/(t1 - t0)));
+		vec3 a3 = (((p0 - p1) * 2.0f) * (1.0f / ((t1 - t0)*(t1 - t0)*(t1 - t0)))) +
+			((v1 + v0)* (1.0f/((t1 - t0)*(t1 - t0))));
+
+		vec3 r = a3*(t - t0)*(t - t0)*(t - t0) +
+			a2*(t - t0)*(t - t0) + a1*(t - t0) + a0;
 	}
 
 	//megadja az i-edik sebessegvektort
