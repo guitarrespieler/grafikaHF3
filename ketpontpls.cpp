@@ -296,13 +296,35 @@ unsigned int shaderProgram;
 class CatmullRomSpline{
 	std::vector<vec3> cps;//control points
 	std::vector<float> ts;//param values
+
 	vec3 Hermite(vec3 p0, vec3 v0, float t0,
 				 vec3 p1, vec3 v1, float t1,
 				 float t){
 		//???
 	}
 
+	//megadja az i-edik sebessegvektort
+	vec3 getVi(int i){
+		if (i == 0)
+			return startVelocity;
+		if (i == cps.size())
+			return endVelocity;
+
+		vec3 szamlalo1 = cps[i + 1] - cps[i];//r(i+1) - r(i)
+		float nevezo1 = ts[i + 1] - ts[i];   //t(i+1) - t(i)
+		vec3 hanyados1 = szamlalo1 * (1.0f / nevezo1);
+
+		vec3 szamlalo2 = cps[i] - cps[i - 1];//r(i) - r(i-1)
+		float nevezo2 = ts[i] - ts[i - 1];	 // t(i)- t(i-1)
+		vec3 hanyados2 = szamlalo2 * (1.0f / nevezo2);
+
+		vec3 vi = (hanyados1 + hanyados2) * 0.5f;
+	}
+
 public:
+	vec3 startVelocity; //kezdo sebessegvektor
+	vec3 endVelocity; //utolso sebessegvektor
+
 	void addControlPoint(vec3 cp, float t){
 		cps.push_back(cp);
 		ts.push_back(t);
@@ -310,10 +332,13 @@ public:
 
 	vec3 r(float t){
 		for(int i = 0; i < cps.size() - 1; i++){
-			if (ts[i] <= t && t <= ts[i + 1])
-				return Hermite(cps[i], vec3(i, i, 0), ts[i],
-							   cps[i + 1], vec3(i + 1, 0, 0), ts[i + 1],
+			if (ts[i] <= t && t <= ts[i + 1]){
+				vec3 vi = getVi(i);
+				vec3 viPlusOne = getVi(i + 1);
+				return Hermite(cps[i], vi, ts[i],
+							   cps[i + 1], viPlusOne, ts[i + 1],
 							   t);
+			}		
 		}
 	}
 	
