@@ -228,8 +228,8 @@ public:
 	float bp = 1500.0f;
 
 	void zTranslate(float z){
-		wLookat.z -= z;
-		wEye.z -= z;
+		wLookat.z -= z; //kivonjuk, mert -z fele nez a kamera.
+		wEye.z -= z;    //szinten.
 	}
 
 	mat4 V(){
@@ -294,8 +294,12 @@ Avatar avatar = Avatar(camera);
 unsigned int shaderProgram;
 
 class CatmullRomSpline{
+	GLuint vao, vbo;        // vertex array object, vertex buffer object
+	std::vector<float> points; //points and colors for test purposes
+
 	std::vector<vec3> cps;//control points
 	std::vector<float> ts;//param values
+
 
 	vec3 Hermite(vec3 p0, vec3 v0, float t0,
 				 vec3 p1, vec3 v1, float t1,
@@ -304,19 +308,21 @@ class CatmullRomSpline{
 		vec3 a0 = p0;
 		vec3 a1 = v0;
 		vec3 a2 = ((p1 - p0)* 3.0f * (1.0f / ((t1 - t0)*(t1 - t0)))) -
-			((v1 - v0*2.0f) * (1.0f/(t1 - t0)));
+			((v1 + v0*2.0f) * (1.0f/(t1 - t0)));
 		vec3 a3 = (((p0 - p1) * 2.0f) * (1.0f / ((t1 - t0)*(t1 - t0)*(t1 - t0)))) +
 			((v1 + v0)* (1.0f/((t1 - t0)*(t1 - t0))));
 
 		vec3 r = a3*(t - t0)*(t - t0)*(t - t0) +
 			a2*(t - t0)*(t - t0) + a1*(t - t0) + a0;
+
+		return r;
 	}
 
 	//megadja az i-edik sebessegvektort
 	vec3 getVi(int i){
 		if (i == 0)
 			return startVelocity;
-		if (i == cps.size())
+		if (i == (cps.size() - 1))
 			return endVelocity;
 
 		vec3 szamlalo1 = cps[i + 1] - cps[i];//r(i+1) - r(i)
@@ -328,15 +334,65 @@ class CatmullRomSpline{
 		vec3 hanyados2 = szamlalo2 * (1.0f / nevezo2);
 
 		vec3 vi = (hanyados1 + hanyados2) * 0.5f;
+
+		return vi;
 	}
 
 public:
 	vec3 startVelocity; //kezdo sebessegvektor
 	vec3 endVelocity; //utolso sebessegvektor
 
+	void Create() {
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// Enable the vertex attribute arrays
+		glEnableVertexAttribArray(0);  // attribute array 0
+		glEnableVertexAttribArray(1);  // attribute array 1
+
+									   // Map attribute array 0 to the vertex data of the interleaved vbo
+		glVertexAttribPointer(0,							//attribute array
+							  3,							//components/attribute
+							  GL_FLOAT,					//component type
+							  GL_FALSE,					//normalize?
+							  6 * sizeof(float),			//stride
+							  reinterpret_cast<void*>(0));//offset
+
+														  // Map attribute array 1 to the color data of the interleaved vbo
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+		}
+
 	void addControlPoint(vec3 cp, float t){
 		cps.push_back(cp);
 		ts.push_back(t);
+
+		fillPointsVector();
+
+		if (cps.size() > 1) {
+			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			// copy data to the GPU
+			glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(float), &points[0], GL_DYNAMIC_DRAW);
+			}
+	}
+
+	void fillPointsVector(){
+		points.clear();
+
+		float i = 0.0f;
+
+		while(i < ts[ts.size()-1]){
+			vec3 point = r(i);
+			points.push_back(point.x);
+			points.push_back(point.y);
+			points.push_back(point.z);
+			points.push_back(1.0f);
+			points.push_back(1.0f);
+			points.push_back(0.0f);
+
+			i += 0.1f;
+		}
 	}
 
 	vec3 r(float t){
@@ -350,93 +406,42 @@ public:
 			}		
 		}
 	}
+
+	void Draw() {
+		if (points.size() > 0) {
+			mat4 Mscale(1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						0, 0, 0, 1); // model matrix
+
+			mat4 Mtranslate(1, 0, 0, 0,
+							0, 1, 0, 0,
+							0, 0, 1, 0,
+							0, 0, -60, 1); // model matrix
+
+			float angle = M_PI / 4.0f;
+			
+			mat4 zRotate(cosf(angle), -sinf(angle), 0, 0,
+						 sinf(angle),  cosf(angle), 0, 0,
+						 0, 0, 1, 0,
+						 0,0,0,1);
+
+
+			mat4 MVPTransform = Mscale * Mtranslate * zRotate * camera.V() * camera.P();
+
+			int location = glGetUniformLocation(shaderProgram, "MVP");
+			if (location >= 0)
+				glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform);
+			else printf("uniform MVP cannot be set\n");
+
+			glBindVertexArray(vao);
+			glDrawArrays(GL_LINE_STRIP, 0, float(points.size() / 6));
+			}
+		}
 	
 };
 
-class Snake{
-	unsigned int vao;	// vertex array object id
-
-						//pallo negy csucsanak koordinatai:
-	vec3 balalso = vec3(-1.0f, -1.0f, 0);
-	vec3 jobbalso = vec3(1.0f, -1.0f, 0);
-	vec3 balfelso = vec3(-1.0f, 1.0f, 0);
-	vec3 jobbfelso = vec3(1.0f, 1.0f, 0);
-
-	float angle = -M_PI / 2.0f;
-	float sx = 10.0f;
-	float sy = 100.0f;
-	float wTx = 0.0f;
-	float wTy = 0.0f;
-	float wTz = 0.0f;
-
-public:
-	void Create() {
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
-
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { balalso.x, balalso.y, jobbalso.x, jobbalso.y, balfelso.x, balfelso.y,
-			jobbalso.x, jobbalso.y, jobbfelso.x, jobbfelso.y, balfelso.x, balfelso.y };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-					 sizeof(vertexCoords), // number of the vbo in bytes
-					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-							  2, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
-
-											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = {
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16 };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
-
-																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
-		}
-	void Draw() {
-		mat4 Mscale(sx, 0, 0, 0,
-					0, sy, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						wTx, wTy, wTz, 1); // model matrix
-
-		mat4 xRotate(1, 0, 0, 0,
-					 0, cosf(angle), -sinf(angle), 0,
-					 0, sinf(angle), cosf(angle), 0,
-					 0, 0, 0, 1);
-
-		mat4 MVPTransform = Mscale * xRotate * Mtranslate * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
-		}
-
-};
+class Snake{};
 
 class Pallo{
 	unsigned int vao;	// vertex array object id
@@ -599,6 +604,7 @@ public:
 Triangle triangle1;
 Triangle triangle2;
 Pallo pallo;
+CatmullRomSpline spline;
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -611,6 +617,8 @@ void onInitialization() {
 
 
 	pallo.Create();
+
+	spline.Create();
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -664,6 +672,8 @@ void onDisplay() {
 	triangle1.Draw();
 	triangle2.Draw();
 	pallo.Draw();
+
+	spline.Draw();
 	
 	
 	glutSwapBuffers();									// exchange the two buffers
@@ -679,7 +689,27 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
-	
+	if (key == 'x') {
+		vec3 p1 = vec3(0,20,0);
+		vec3 p2 = vec3(-4,16,0);
+		vec3 p3 = vec3(4,12,0);
+		vec3 p4 = vec3(-4,8,0);
+		vec3 p5 = vec3(0, 4,0);
+
+
+		vec3 startV = vec3(-1,0.5,0);
+		vec3 endV = vec3(0, -1,0);
+
+		spline.startVelocity = startV;
+		spline.endVelocity = endV;
+
+		spline.addControlPoint(p1, 0);
+		spline.addControlPoint(p2, 1);
+		spline.addControlPoint(p3, 2);
+		spline.addControlPoint(p4, 3);
+		spline.addControlPoint(p5, 4);
+		//spline.addControlPoint(p6, 5);	
+	}
 
 }
 
