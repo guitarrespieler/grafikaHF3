@@ -220,7 +220,7 @@ class Camera{
 public:
 	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 10.0f, 30.0f);
+	vec3 wEye = vec3(0.0f, 10.0f, 50.0f);
 
 	float fov = M_PI / 4.0f; //45 fok
 	float asp = windowWidth / windowHeight;
@@ -293,6 +293,8 @@ Avatar avatar = Avatar(camera);
 // handle of the shader program
 unsigned int shaderProgram;
 
+
+
 class CatmullRomSpline{
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
 	std::vector<float> points; //points and colors for test purposes
@@ -300,6 +302,8 @@ class CatmullRomSpline{
 	std::vector<vec3> cps;//control points
 	std::vector<float> ts;//param values
 
+	vec3 startVelocity = vec3(-1, 0.5, 0); //kezdo sebessegvektor
+	vec3 endVelocity = vec3(0, -1, 0);; //utolso sebessegvektor
 
 	vec3 Hermite(vec3 p0, vec3 v0, float t0,
 				 vec3 p1, vec3 v1, float t1,
@@ -338,9 +342,29 @@ class CatmullRomSpline{
 		return vi;
 	}
 
+	void addControlPoint(vec3 cp, float t){
+		cps.push_back(cp);
+		ts.push_back(t);		
+	}
+
 public:
-	vec3 startVelocity; //kezdo sebessegvektor
-	vec3 endVelocity; //utolso sebessegvektor
+	int sX = 1;	int sY = 1;	int sZ = 1;		//skalazas
+	int tX = 5; int tY = 10; int tZ = -30;	//eltolas
+	float zAngle = M_PI / 4.0f;				//forgatas z korul 45 fokkal
+
+	CatmullRomSpline(){
+		vec3 p1 = vec3(0, 40, 0);
+		vec3 p2 = vec3(-8, 30, 0);
+		vec3 p3 = vec3(4, 20, 0);
+		vec3 p4 = vec3(-8, 10, 0);
+		vec3 p5 = vec3(0, 0, 0);
+
+		addControlPoint(p1, 0);
+		addControlPoint(p2, 1);
+		addControlPoint(p3, 2);
+		addControlPoint(p4, 3);
+		addControlPoint(p5, 4);
+	}
 
 	void Create() {
 		glGenVertexArrays(1, &vao);
@@ -364,18 +388,8 @@ public:
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
 		}
 
-	void addControlPoint(vec3 cp, float t){
-		cps.push_back(cp);
-		ts.push_back(t);
 
-		fillPointsVector();
 
-		if (cps.size() > 1) {
-			glBindBuffer(GL_ARRAY_BUFFER, vbo);
-			// copy data to the GPU
-			glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(float), &points[0], GL_DYNAMIC_DRAW);
-			}
-	}
 
 	void fillPointsVector(){
 		points.clear();
@@ -407,24 +421,42 @@ public:
 		}
 	}
 
+	void Animate(float t){
+		if (cps.empty())
+			return;
+
+		for(int i = 1; i < cps.size(); i++){
+			vec3 vec = cps[i];
+			vec.x = 4.0f * cosf(2.5f * t);
+			if (i % 2 == 0)
+				vec.x *= -1.0f;
+			cps[i] = vec;
+		}		
+		
+		fillPointsVector();
+				
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// copy data to the GPU
+		glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(float), &points[0], GL_DYNAMIC_DRAW);
+
+	}
+
 	void Draw() {
 		if (points.size() > 0) {
-			mat4 Mscale(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						0, 0, 0, 1); // model matrix
+			mat4 Mscale(sX, 0, 0, 0,
+						0, sY, 0, 0,
+						0, 0, sZ, 0,
+						0, 0, 0, 1);
 
 			mat4 Mtranslate(1, 0, 0, 0,
 							0, 1, 0, 0,
 							0, 0, 1, 0,
-							0, 0, -60, 1); // model matrix
-
-			float angle = M_PI / 4.0f;
+							tX, tY, tZ, 1);
 			
-			mat4 zRotate(cosf(angle), -sinf(angle), 0, 0,
-						 sinf(angle),  cosf(angle), 0, 0,
+			mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
+						 sinf(zAngle),  cosf(zAngle), 0, 0,
 						 0, 0, 1, 0,
-						 0,0,0,1);
+						 0, 0, 0, 1);
 
 
 			mat4 MVPTransform = Mscale * Mtranslate * zRotate * camera.V() * camera.P();
@@ -604,7 +636,10 @@ public:
 Triangle triangle1;
 Triangle triangle2;
 Pallo pallo;
-CatmullRomSpline spline;
+CatmullRomSpline spline1;
+CatmullRomSpline spline2;
+CatmullRomSpline spline3;
+
 
 // Initialization, create an OpenGL context
 void onInitialization() {
@@ -618,7 +653,14 @@ void onInitialization() {
 
 	pallo.Create();
 
-	spline.Create();
+	spline1.Create();
+	spline2.Create();
+	spline2.zAngle *= -1.0f;
+	spline2.tX *= -1.0f;
+	spline2.tZ = -60;
+
+	spline3.Create();
+	spline3.tZ = -100;
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -673,7 +715,9 @@ void onDisplay() {
 	triangle2.Draw();
 	pallo.Draw();
 
-	spline.Draw();
+	spline1.Draw();
+	spline2.Draw();
+	spline3.Draw();
 	
 	
 	glutSwapBuffers();									// exchange the two buffers
@@ -682,6 +726,7 @@ void onDisplay() {
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
+	
 	if (key == ' ') {
 		avatar.move();
 		}
@@ -689,28 +734,6 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
-	if (key == 'x') {
-		vec3 p1 = vec3(0,20,0);
-		vec3 p2 = vec3(-4,16,0);
-		vec3 p3 = vec3(4,12,0);
-		vec3 p4 = vec3(-4,8,0);
-		vec3 p5 = vec3(0, 4,0);
-
-
-		vec3 startV = vec3(-1,0.5,0);
-		vec3 endV = vec3(0, -1,0);
-
-		spline.startVelocity = startV;
-		spline.endVelocity = endV;
-
-		spline.addControlPoint(p1, 0);
-		spline.addControlPoint(p2, 1);
-		spline.addControlPoint(p3, 2);
-		spline.addControlPoint(p4, 3);
-		spline.addControlPoint(p5, 4);
-		//spline.addControlPoint(p6, 5);	
-	}
-
 }
 
 // Mouse click event
@@ -734,6 +757,11 @@ void onIdle() {
 	triangle2.wTy = 2 + 4*sinf(2*sec);
 	triangle2.wTz = -50.0f;
 	triangle2.Animate(sec);
+
+	spline1.Animate(sec);
+	spline2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
+	spline3.Animate(sec + 2);
+
 	glutPostRedisplay();					// redraw the scene
 	}
 
