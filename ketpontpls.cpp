@@ -523,10 +523,10 @@ class Snake{
 				//vec3 colorC = getSurfacePointColor(center2, szog, sugar2);
 				//vec3 colorD = getSurfacePointColor(center2, szog + szogNovekmeny, sugar2);
 				
-				vec3 colorA = vec3(1, 0, 0);
-				vec3 colorB = vec3(0, 1, 0);
-				vec3 colorC = vec3(0, 0, 1);
-				vec3 colorD = vec3(1, 0, 0);
+				vec3 colorA = vec3(0, 0.8, 0.1);
+				vec3 colorB = vec3(0, 0.8, 0.1);
+				vec3 colorC = vec3(0, 0.8, 0.1);
+				vec3 colorD = vec3(0, 0.8, 0.1);
 
 				writeVertexDataToVector(A, B, C,colorA,colorB,colorC);
 				writeVertexDataToVector(B, C, D,colorB,colorC,colorD);
