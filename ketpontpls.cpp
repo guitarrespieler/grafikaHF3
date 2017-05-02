@@ -473,7 +473,15 @@ public:
 	
 };
 
-class Snake{};
+class Snake{
+
+public:
+	CatmullRomSpline gerincgorbe;	//kigyo gerincgorbeje
+	float radius = 3.0f;			//kigyo profilgorbejenek sugara
+
+
+
+};
 
 class Pallo{
 	unsigned int vao;	// vertex array object id
@@ -562,12 +570,16 @@ public:
 class Triangle {
 public:
 	unsigned int vao;	// vertex array object id
-	float sx, sy;		// scaling
-	float wTx, wTy, wTz;// translation
+	float sx = 1, sy = 1;		// scaling
+	float wTx = 0, wTy = 0, wTz = 0;// translation
 
-	Triangle() {
-		Animate(0);
-		}
+	vec3 A = vec3(-5, 0, 0);
+	vec3 B = vec3(5, 0, 0);
+	vec3 C = vec3(0, 8.66, 0);
+
+	vec3 colorA = vec3(1, 0, 0);
+	vec3 colorB = vec3(0, 1, 0);
+	vec3 colorC = vec3(0, 0, 1);	
 
 	void Create() {
 		glGenVertexArrays(1, &vao);	// create 1 vertex array object
@@ -578,7 +590,7 @@ public:
 
 									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { -5, 0,  5, 0,  0, 8,66 };	// vertex data on the CPU
+		static float vertexCoords[] = { A.x, A.y, B.x, B.y, C.x, C.y };	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 					 sizeof(vertexCoords), // number of the vbo in bytes
 					 vertexCoords,		   // address of the data array on the CPU
@@ -593,7 +605,10 @@ public:
 
 											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 1, 0, 0,  0, 1, 0,  0, 0, 1 };	// vertex data on the CPU
+		static float vertexColors[] = { 
+			colorA.x, colorA.y, colorA.z,  
+			colorB.x, colorB.y, colorB.z, 
+			colorC.x, colorC.y, colorC.z};	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
 
 																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
