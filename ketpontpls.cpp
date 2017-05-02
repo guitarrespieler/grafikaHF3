@@ -152,7 +152,7 @@ public:
 
 struct vec3 {
 	float x, y, z;
-
+	
 	vec3(float x0 = 0, float y0 = 0, float z0 = 0) { x = x0; y = y0; z = z0; }
 
 	vec3 operator*(float a) const { return vec3(x * a, y * a, z * a); }
@@ -220,7 +220,7 @@ class Camera{
 public:
 	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 10.0f, 50.0f);
+	vec3 wEye = vec3(0.0f, 10.0f, 70.0f);
 
 	float fov = M_PI_4; //45 fok
 	float asp = windowWidth / windowHeight;
@@ -297,7 +297,7 @@ unsigned int shaderProgram;
 
 class CatmullRomSpline{
 	vec3 startVelocity = vec3(-1, 0.5, 0); //kezdo sebessegvektor
-	vec3 endVelocity = vec3(0, -1, 0);; //utolso sebessegvektor
+	vec3 endVelocity = vec3(0, -1, 0); //utolso sebessegvektor
 
 	vec3 Hermite(vec3 p0, vec3 v0, float t0,
 				 vec3 p1, vec3 v1, float t1,
@@ -352,11 +352,11 @@ public:
 		vec3 p4 = vec3(-8, 10, 0);
 		vec3 p5 = vec3(0, 0, 0);
 
-		addControlPoint(p1, 0);
-		addControlPoint(p2, 1);
-		addControlPoint(p3, 2);
-		addControlPoint(p4, 3);
-		addControlPoint(p5, 4);
+		addControlPoint(p1, 0.0f);
+		addControlPoint(p2, 1.0f);
+		addControlPoint(p3, 2.0f);
+		addControlPoint(p4, 3.0f);
+		addControlPoint(p5, 4.0f);
 	}
 
 	vec3 r(float t){
@@ -413,7 +413,7 @@ public:
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 					 sizeof(vertexCoords), // number of the vbo in bytes
 					 vertexCoords,		   // address of the data array on the CPU
-					 GL_DYNAMIC_DRAW);	   // copy to that part of the memory which is not modified 
+					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
 										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
 		glEnableVertexAttribArray(0);
 		// Data organization of Attribute Array 0 
@@ -428,7 +428,7 @@ public:
 			colorA.x, colorA.y, colorA.z,
 			colorB.x, colorB.y, colorB.z,
 			colorC.x, colorC.y, colorC.z };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_DYNAMIC_DRAW);	// copy to the GPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
 
 																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
 		glEnableVertexAttribArray(1);  // Vertex position
@@ -466,16 +466,17 @@ public:
 	};
 
 class Snake{
-	std::vector<Triangle> triangles;//itt tartom a kigyot alkoto haromszogeket
+	GLuint vao, vbo;        // vertex array object, vertex buffer object	
+	std::vector<float> trianglesData;//itt tartom a kigyot alkoto haromszogek vertexeit es fragmentjeit
 	
-	float maxRadius = 5.0f;
-	float neckRadius = 2.5f;
+	float maxRadius = 2.0f;
+	float neckRadius = 1.0f;
 
 	//megadja a profilgorbe sugarat
 	//parameter a gorbe ts parameterei menten fog menni
 	float getRadius(float t){
-		if(gerincgorbe.ts[0] < t && gerincgorbe.ts[1] > t){
-			return t;
+		if(gerincgorbe.ts[0] < t && gerincgorbe.ts[2] > t){
+			return t + 0.001f;
 		}
 
 		int size = gerincgorbe.ts.size();
@@ -484,6 +485,9 @@ class Snake{
 
 		if(utolso > t && utolsoelotti < t){
 			float kulonbseg = fabs(utolso - t);
+
+			if (kulonbseg < 0.001f)
+				return 0.00000001f;
 
 			float rad = neckRadius + kulonbseg;
 
@@ -496,69 +500,123 @@ class Snake{
 
 	//letrehozza a kigyo testet alkoto haromszogeket
 	void generateTriangles(){
-		int triangleIndex = 0;
+		trianglesData.clear();
 		int tsSize = gerincgorbe.ts.size();
 
-		float tNovekmeny = 0.5f;
-		float szogNovekmeny = 45.0f;
+		float tNovekmeny = 0.1f;
+		float szogNovekmeny = 30.0f;
+
 		for(float t = 0.0f; t < gerincgorbe.ts[tsSize - 1] - tNovekmeny; t += tNovekmeny){
 			vec3 center1 = gerincgorbe.r(t);							//ez lesz a kor kozepe
 			vec3 center2 = gerincgorbe.r(t + tNovekmeny);				//ez a kovetkezonek a kozepe
 			float sugar1 = getRadius(t);								//ez lesz a kor sugara
 			float sugar2 = getRadius(t + tNovekmeny);					//ez a kovetkezonek a sugara
+
 			for(float szog = 0.0f; szog <= 360; szog+= szogNovekmeny){
 				vec3 A = getSurfacePoint(center1, szog, sugar1);
 				vec3 B = getSurfacePoint(center1, szog + szogNovekmeny, sugar1);
 				vec3 C = getSurfacePoint(center2, szog, sugar2);
 				vec3 D = getSurfacePoint(center2, szog + szogNovekmeny, sugar2);
-				
-				setupTriangle(triangleIndex, A, B, C);
-				triangleIndex++;
 
-				setupTriangle(triangleIndex, B, C, D);
-				triangleIndex++;
+				//vec3 colorA = getSurfacePointColor(center1, szog, sugar1);
+				//vec3 colorB = getSurfacePointColor(center1, szog + szogNovekmeny, sugar1);
+				//vec3 colorC = getSurfacePointColor(center2, szog, sugar2);
+				//vec3 colorD = getSurfacePointColor(center2, szog + szogNovekmeny, sugar2);
+				
+				vec3 colorA = vec3(1, 0, 0);
+				vec3 colorB = vec3(0, 1, 0);
+				vec3 colorC = vec3(0, 0, 1);
+				vec3 colorD = vec3(1, 0, 0);
+
+				writeVertexDataToVector(A, B, C,colorA,colorB,colorC);
+				writeVertexDataToVector(B, C, D,colorB,colorC,colorD);
 			}
 		}
 	}
 
 	vec3 getSurfacePoint(vec3 center, float angleInDegrees, float radius){
 		float angleInRadian = angleInDegrees * (M_PI / 180);
-		float x = center.x + radius * cosf(angleInRadian);
+		float x = center.x + radius * sinf(angleInRadian);
 		float y = center.y;
-		float z = center.z + radius * sinf(angleInRadian);
+		float z = center.z + radius * cosf(angleInRadian);
 
 		return vec3(x,y,z);
 	}
 
-	void setupTriangle(int triangleIndex, vec3 A, vec3 B, vec3 C) {
-		Triangle triangle;
-
-		if (triangleIndex < triangles.size()) {
-			triangle = triangles[triangleIndex];
-		}
-		else {
-			triangle.Create();
-		}
-
-		triangle.A = A;
-		triangle.B = B;
-		triangle.C = C;
-		triangle.wTx = tX;
-		triangle.wTy = tY;
-		triangle.wTz = tZ;
-		triangle.zAngle = zAngle;
-
-		triangles.push_back(triangle);
+	void writeVertexDataToVector(vec3 A, vec3 B, vec3 C,vec3 colorA, vec3 colorB, vec3 colorC) {
+		trianglesData.push_back(A.x);
+		trianglesData.push_back(A.y);
+		trianglesData.push_back(A.z);
+		trianglesData.push_back(B.x);
+		trianglesData.push_back(B.y);
+		trianglesData.push_back(B.z);
+		trianglesData.push_back(C.x);
+		trianglesData.push_back(C.y);
+		trianglesData.push_back(C.z);
+		trianglesData.push_back(colorA.x);
+		trianglesData.push_back(colorA.y);
+		trianglesData.push_back(colorA.z);
+		trianglesData.push_back(colorB.x);
+		trianglesData.push_back(colorB.y);
+		trianglesData.push_back(colorB.z);
+		trianglesData.push_back(colorC.x);
+		trianglesData.push_back(colorC.y);
+		trianglesData.push_back(colorC.z);
 	}
 public:
-	CatmullRomSpline gerincgorbe;			//kigyo gerincgorbeje
-	int tX = 5; int tY = 10; int tZ = -30;	//eltolas
-	float zAngle = M_PI_4;					//z koruli elforgatas szoge
+	CatmullRomSpline gerincgorbe = CatmullRomSpline();			//kigyo gerincgorbeje
+	int tX = 5; int tY = 10; int tZ = -30;						//eltolas
+	float zAngle = M_PI_4;										//z koruli elforgatas szoge
 
-	void Draw(){
-		for (int i = 0; i < triangles.size(); i++){
-			triangles[i].Draw();
-		}
+	void Create(){
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// Enable the vertex attribute arrays
+		glEnableVertexAttribArray(0);  // attribute array 0
+		glEnableVertexAttribArray(1);  // attribute array 1
+
+									   // Map attribute array 0 to the vertex data of the interleaved vbo
+		glVertexAttribPointer(0,							//attribute array
+							  3,							//components/attribute
+							  GL_FLOAT,					//component type
+							  GL_FALSE,					//normalize?
+							  3 * sizeof(float),			//stride
+							  reinterpret_cast<void*>(0));//offset
+
+														  // Map attribute array 1 to the color data of the interleaved vbo
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), reinterpret_cast<void*>(9 * sizeof(float)));
+	}
+
+	void Draw(){	
+		if (trianglesData.empty())
+			return;
+
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		// copy data to the GPU
+		glBufferData(GL_ARRAY_BUFFER, trianglesData.size() * sizeof(float), &trianglesData[0], GL_DYNAMIC_DRAW);
+
+		mat4 Mtranslate(1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						tX, tY, tZ, 1); // model matrix
+
+		mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
+					 sinf(zAngle), cosf(zAngle), 0, 0,
+					 0, 0, 1, 0,
+					 0, 0, 0, 1);
+
+		mat4 MVPTransform = zRotate * Mtranslate * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, trianglesData.size());	// draw a single triangle with vertices defined in vao
 	}
 
 	void Animate(float t){
@@ -678,6 +736,10 @@ void onInitialization() {
 
 	snek3.tZ = -100;
 
+	snek1.Create();
+	snek2.Create();
+	snek3.Create();
+
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	if (!vertexShader) {
@@ -724,7 +786,7 @@ void onExit() {
 
 // Window has become invalid: Redraw
 void onDisplay() {
-	glClearColor(0, 0, 0, 0);							// background color 
+	glClearColor(0, 0.9, 0.9, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 
 	triangle1.Draw();
@@ -744,7 +806,6 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	
 	if (key == ' ') {
 		avatar.move();
-		printf("szokoz megnyomva.\n");
 		}
 	}
 
