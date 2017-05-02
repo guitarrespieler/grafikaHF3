@@ -220,7 +220,7 @@ class Camera{
 public:
 	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 10.0f, 70.0f);
+	vec3 wEye = vec3(0.0f, 15.0f, 70.0f);
 
 	float fov = M_PI_4; //45 fok
 	float asp = windowWidth / windowHeight;
@@ -475,6 +475,9 @@ class Snake{
 	//megadja a profilgorbe sugarat
 	//parameter a gorbe ts parameterei menten fog menni
 	float getRadius(float t){
+		if (fabs(t - gerincgorbe.ts[0]) < 0.000001)
+			return gerincgorbe.ts[0];
+
 		if(gerincgorbe.ts[0] < t && gerincgorbe.ts[2] > t){
 			return t + 0.001f;
 		}
@@ -485,9 +488,6 @@ class Snake{
 
 		if(utolso > t && utolsoelotti < t){
 			float kulonbseg = fabs(utolso - t);
-
-			if (kulonbseg < 0.001f)
-				return 0.00000001f;
 
 			float rad = neckRadius + kulonbseg;
 
@@ -536,9 +536,9 @@ class Snake{
 
 	vec3 getSurfacePoint(vec3 center, float angleInDegrees, float radius){
 		float angleInRadian = angleInDegrees * (M_PI / 180);
-		float x = center.x + radius * sinf(angleInRadian);
+		float x = center.x + radius * cosf(angleInRadian);
 		float y = center.y;
-		float z = center.z + radius * cosf(angleInRadian);
+		float z = center.z + radius * sinf(angleInRadian);
 
 		return vec3(x,y,z);
 	}
