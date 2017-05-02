@@ -222,7 +222,7 @@ public:
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
 	vec3 wEye = vec3(0.0f, 10.0f, 50.0f);
 
-	float fov = M_PI / 4.0f; //45 fok
+	float fov = M_PI_4; //45 fok
 	float asp = windowWidth / windowHeight;
 	float fp = 5.0f;
 	float bp = 1500.0f;
@@ -296,11 +296,6 @@ unsigned int shaderProgram;
 
 
 class CatmullRomSpline{
-	GLuint vao, vbo;        // vertex array object, vertex buffer object
-	std::vector<float> points; //points and colors for test purposes
-
-	
-
 	vec3 startVelocity = vec3(-1, 0.5, 0); //kezdo sebessegvektor
 	vec3 endVelocity = vec3(0, -1, 0);; //utolso sebessegvektor
 
@@ -347,10 +342,6 @@ class CatmullRomSpline{
 	}
 
 public:
-	int sX = 1;	int sY = 1;	int sZ = 1;		//skalazas
-	int tX = 5; int tY = 10; int tZ = -30;	//eltolas
-	float zAngle = M_PI / 4.0f;				//forgatas z korul 45 fokkal
-
 	std::vector<vec3> cps;//control points
 	std::vector<float> ts;//param values
 
@@ -366,49 +357,6 @@ public:
 		addControlPoint(p3, 2);
 		addControlPoint(p4, 3);
 		addControlPoint(p5, 4);
-	}
-
-	void Create() {
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Enable the vertex attribute arrays
-		glEnableVertexAttribArray(0);  // attribute array 0
-		glEnableVertexAttribArray(1);  // attribute array 1
-
-									   // Map attribute array 0 to the vertex data of the interleaved vbo
-		glVertexAttribPointer(0,							//attribute array
-							  3,							//components/attribute
-							  GL_FLOAT,					//component type
-							  GL_FALSE,					//normalize?
-							  6 * sizeof(float),			//stride
-							  reinterpret_cast<void*>(0));//offset
-
-														  // Map attribute array 1 to the color data of the interleaved vbo
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
-		}
-
-
-
-
-	void fillPointsVector(){
-		points.clear();
-
-		float i = 0.0f;
-
-		while(i < ts[ts.size()-1]){
-			vec3 point = r(i);
-			points.push_back(point.x);
-			points.push_back(point.y);
-			points.push_back(point.z);
-			points.push_back(1.0f);
-			points.push_back(1.0f);
-			points.push_back(0.0f);
-
-			i += 0.1f;
-		}
 	}
 
 	vec3 r(float t){
@@ -434,45 +382,7 @@ public:
 				vec.x *= -1.0f;
 			cps[i] = vec;
 		}		
-		
-		fillPointsVector();
-				
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// copy data to the GPU
-		glBufferData(GL_ARRAY_BUFFER, points.size() * sizeof(float), &points[0], GL_DYNAMIC_DRAW);
-
 	}
-
-	void Draw() {
-		if (points.size() > 0) {
-			mat4 Mscale(sX, 0, 0, 0,
-						0, sY, 0, 0,
-						0, 0, sZ, 0,
-						0, 0, 0, 1);
-
-			mat4 Mtranslate(1, 0, 0, 0,
-							0, 1, 0, 0,
-							0, 0, 1, 0,
-							tX, tY, tZ, 1);
-			
-			mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
-						 sinf(zAngle),  cosf(zAngle), 0, 0,
-						 0, 0, 1, 0,
-						 0, 0, 0, 1);
-
-
-			mat4 MVPTransform = Mscale * Mtranslate * zRotate * camera.V() * camera.P();
-
-			int location = glGetUniformLocation(shaderProgram, "MVP");
-			if (location >= 0)
-				glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform);
-			else printf("uniform MVP cannot be set\n");
-
-			glBindVertexArray(vao);
-			glDrawArrays(GL_LINE_STRIP, 0, float(points.size() / 6));
-			}
-		}
-	
 };
 
 class Triangle {
@@ -480,6 +390,7 @@ public:
 	unsigned int vao;	// vertex array object id
 	float sx = 1, sy = 1;		// scaling
 	float wTx = 0, wTy = 0, wTz = 0;// translation
+	float zAngle = 0.0f;					//z rotate
 
 	vec3 A = vec3(-5, 0, 0);
 	vec3 B = vec3(5, 0, 0);
@@ -498,16 +409,16 @@ public:
 
 									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
 		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { A.x, A.y, B.x, B.y, C.x, C.y };	// vertex data on the CPU
+		static float vertexCoords[] = { A.x, A.y, A.z, B.x, B.y, B.z, C.x, C.y, C.z};	// vertex data on the CPU
 		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
 					 sizeof(vertexCoords), // number of the vbo in bytes
 					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+					 GL_DYNAMIC_DRAW);	   // copy to that part of the memory which is not modified 
 										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
 		glEnableVertexAttribArray(0);
 		// Data organization of Attribute Array 0 
 		glVertexAttribPointer(0,			// Attribute Array 0
-							  2, GL_FLOAT,  // components/attribute, component type
+							  3, GL_FLOAT,  // components/attribute, component type
 							  GL_FALSE,		// not in fixed point format, do not normalized
 							  0, NULL);     // stride and offset: it is tightly packed
 
@@ -517,7 +428,7 @@ public:
 			colorA.x, colorA.y, colorA.z,
 			colorB.x, colorB.y, colorB.z,
 			colorC.x, colorC.y, colorC.z };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_DYNAMIC_DRAW);	// copy to the GPU
 
 																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
 		glEnableVertexAttribArray(1);  // Vertex position
@@ -525,13 +436,6 @@ public:
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
 		}
 
-	void Animate(float t) {
-		sx = 1; // sinf(t);
-		sy = 1; // cosf(t);
-				//		wTx = 4 * cosf(t / 2);
-				//		wTy = 4 * sinf(t / 2);
-				//		wTz = 10.0f;
-		}
 
 	void Draw() {
 		mat4 Mscale(sx, 0, 0, 0,
@@ -544,7 +448,12 @@ public:
 						0, 0, 1, 0,
 						wTx, wTy, wTz, 1); // model matrix
 
-		mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+		mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
+					 sinf(zAngle), cosf(zAngle), 0, 0,
+					 0, 0, 1, 0,
+					 0, 0, 0, 1);
+
+		mat4 MVPTransform = Mscale * zRotate * Mtranslate * camera.V() * camera.P();
 
 		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
 		int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -558,9 +467,9 @@ public:
 
 class Snake{
 	std::vector<Triangle> triangles;//itt tartom a kigyot alkoto haromszogeket
-
-	float maxRadius = 1.5f;
-	float neckRadius = 0.5f;
+	
+	float maxRadius = 5.0f;
+	float neckRadius = 2.5f;
 
 	//megadja a profilgorbe sugarat
 	//parameter a gorbe ts parameterei menten fog menni
@@ -576,7 +485,7 @@ class Snake{
 		if(utolso > t && utolsoelotti < t){
 			float kulonbseg = fabs(utolso - t);
 
-			float rad = 0.5 + kulonbseg;
+			float rad = neckRadius + kulonbseg;
 
 			if (rad < maxRadius)
 				return rad;
@@ -584,17 +493,78 @@ class Snake{
 		return maxRadius;
 	}
 
-public:
-	CatmullRomSpline gerincgorbe;	//kigyo gerincgorbeje
-	
 
-	void Create(){
-		for(int i = 0; i < triangles.size(); i++){
-			triangles[i].Create();
+	//letrehozza a kigyo testet alkoto haromszogeket
+	void generateTriangles(){
+		int triangleIndex = 0;
+		int tsSize = gerincgorbe.ts.size();
+
+		float tNovekmeny = 0.5f;
+		float szogNovekmeny = 45.0f;
+		for(float t = 0.0f; t < gerincgorbe.ts[tsSize - 1] - tNovekmeny; t += tNovekmeny){
+			vec3 center1 = gerincgorbe.r(t);							//ez lesz a kor kozepe
+			vec3 center2 = gerincgorbe.r(t + tNovekmeny);				//ez a kovetkezonek a kozepe
+			float sugar1 = getRadius(t);								//ez lesz a kor sugara
+			float sugar2 = getRadius(t + tNovekmeny);					//ez a kovetkezonek a sugara
+			for(float szog = 0.0f; szog <= 360; szog+= szogNovekmeny){
+				vec3 A = getSurfacePoint(center1, szog, sugar1);
+				vec3 B = getSurfacePoint(center1, szog + szogNovekmeny, sugar1);
+				vec3 C = getSurfacePoint(center2, szog, sugar2);
+				vec3 D = getSurfacePoint(center2, szog + szogNovekmeny, sugar2);
+				
+				setupTriangle(triangleIndex, A, B, C);
+				triangleIndex++;
+
+				setupTriangle(triangleIndex, B, C, D);
+				triangleIndex++;
+			}
 		}
 	}
 
+	vec3 getSurfacePoint(vec3 center, float angleInDegrees, float radius){
+		float angleInRadian = angleInDegrees * (M_PI / 180);
+		float x = center.x + radius * cosf(angleInRadian);
+		float y = center.y;
+		float z = center.z + radius * sinf(angleInRadian);
 
+		return vec3(x,y,z);
+	}
+
+	void setupTriangle(int triangleIndex, vec3 A, vec3 B, vec3 C) {
+		Triangle triangle;
+
+		if (triangleIndex < triangles.size()) {
+			triangle = triangles[triangleIndex];
+		}
+		else {
+			triangle.Create();
+		}
+
+		triangle.A = A;
+		triangle.B = B;
+		triangle.C = C;
+		triangle.wTx = tX;
+		triangle.wTy = tY;
+		triangle.wTz = tZ;
+		triangle.zAngle = zAngle;
+
+		triangles.push_back(triangle);
+	}
+public:
+	CatmullRomSpline gerincgorbe;			//kigyo gerincgorbeje
+	int tX = 5; int tY = 10; int tZ = -30;	//eltolas
+	float zAngle = M_PI_4;					//z koruli elforgatas szoge
+
+	void Draw(){
+		for (int i = 0; i < triangles.size(); i++){
+			triangles[i].Draw();
+		}
+	}
+
+	void Animate(float t){
+		gerincgorbe.Animate(t);	
+		generateTriangles();
+	}
 };
 
 class Pallo{
@@ -606,7 +576,7 @@ class Pallo{
 	vec3 balfelso = vec3(-1.0f,  1.0f, 0);
 	vec3 jobbfelso= vec3( 1.0f,  1.0f, 0);
 
-	float angle = -M_PI/2.0f;
+	float angle = -M_PI_2;
 	float sx = 10.0f;
 	float sy = 100.0f;
 	float wTx = 0.0f;
@@ -677,7 +647,7 @@ public:
 		else printf("uniform MVP cannot be set\n");
 
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw a single triangle with vertices defined in vao
+		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw two triangles with vertices defined in vao
 	}
 };
 
@@ -686,9 +656,10 @@ public:
 Triangle triangle1;
 Triangle triangle2;
 Pallo pallo;
-CatmullRomSpline spline1;
-CatmullRomSpline spline2;
-CatmullRomSpline spline3;
+
+Snake snek1;
+Snake snek2;
+Snake snek3;
 
 
 // Initialization, create an OpenGL context
@@ -697,20 +668,15 @@ void onInitialization() {
 
 	// Create objects by setting up their vertex data on the GPU
 	triangle1.Create();
-
 	triangle2.Create();
-
 
 	pallo.Create();
 
-	spline1.Create();
-	spline2.Create();
-	spline2.zAngle *= -1.0f;
-	spline2.tX *= -1.0f;
-	spline2.tZ = -60;
+	snek2.zAngle *= -1.0f;
+	snek2.tX *= -1.0f;
+	snek2.tZ = -60;
 
-	spline3.Create();
-	spline3.tZ = -100;
+	snek3.tZ = -100;
 
 	// Create vertex shader from string
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -765,10 +731,9 @@ void onDisplay() {
 	triangle2.Draw();
 	pallo.Draw();
 
-	spline1.Draw();
-	spline2.Draw();
-	spline3.Draw();
-	
+	snek3.Draw();
+	snek2.Draw();
+	snek1.Draw();
 	
 	glutSwapBuffers();									// exchange the two buffers
 	}
@@ -779,6 +744,7 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	
 	if (key == ' ') {
 		avatar.move();
+		printf("szokoz megnyomva.\n");
 		}
 	}
 
@@ -802,15 +768,13 @@ void onIdle() {
 	triangle1.wTx = -10 - 4*cosf(2*sec);
 	triangle1.wTy = 2 - 4*sinf(2*sec);
 	triangle1.wTz = -15.0f;
-	triangle1.Animate(sec);					// animate the triangle object
 	triangle2.wTx = 10 + 4*cosf(2*sec);
 	triangle2.wTy = 2 + 4*sinf(2*sec);
 	triangle2.wTz = -50.0f;
-	triangle2.Animate(sec);
 
-	spline1.Animate(sec);
-	spline2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
-	spline3.Animate(sec + 2);
+	snek1.Animate(sec);
+	snek2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
+	snek3.Animate(sec + 2);
 
 	glutPostRedisplay();					// redraw the scene
 	}
