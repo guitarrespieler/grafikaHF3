@@ -299,8 +299,7 @@ class CatmullRomSpline{
 	GLuint vao, vbo;        // vertex array object, vertex buffer object
 	std::vector<float> points; //points and colors for test purposes
 
-	std::vector<vec3> cps;//control points
-	std::vector<float> ts;//param values
+	
 
 	vec3 startVelocity = vec3(-1, 0.5, 0); //kezdo sebessegvektor
 	vec3 endVelocity = vec3(0, -1, 0);; //utolso sebessegvektor
@@ -351,6 +350,9 @@ public:
 	int sX = 1;	int sY = 1;	int sZ = 1;		//skalazas
 	int tX = 5; int tY = 10; int tZ = -30;	//eltolas
 	float zAngle = M_PI / 4.0f;				//forgatas z korul 45 fokkal
+
+	std::vector<vec3> cps;//control points
+	std::vector<float> ts;//param values
 
 	CatmullRomSpline(){
 		vec3 p1 = vec3(0, 40, 0);
@@ -473,12 +475,124 @@ public:
 	
 };
 
+class Triangle {
+public:
+	unsigned int vao;	// vertex array object id
+	float sx = 1, sy = 1;		// scaling
+	float wTx = 0, wTy = 0, wTz = 0;// translation
+
+	vec3 A = vec3(-5, 0, 0);
+	vec3 B = vec3(5, 0, 0);
+	vec3 C = vec3(0, 8.66, 0);
+
+	vec3 colorA = vec3(1, 0, 0);
+	vec3 colorB = vec3(0, 1, 0);
+	vec3 colorC = vec3(0, 0, 1);
+
+	void Create() {
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+		static float vertexCoords[] = { A.x, A.y, B.x, B.y, C.x, C.y };	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+					 sizeof(vertexCoords), // number of the vbo in bytes
+					 vertexCoords,		   // address of the data array on the CPU
+					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0 
+		glVertexAttribPointer(0,			// Attribute Array 0
+							  2, GL_FLOAT,  // components/attribute, component type
+							  GL_FALSE,		// not in fixed point format, do not normalized
+							  0, NULL);     // stride and offset: it is tightly packed
+
+											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		static float vertexColors[] = {
+			colorA.x, colorA.y, colorA.z,
+			colorB.x, colorB.y, colorB.z,
+			colorC.x, colorC.y, colorC.z };	// vertex data on the CPU
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+
+																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+		}
+
+	void Animate(float t) {
+		sx = 1; // sinf(t);
+		sy = 1; // cosf(t);
+				//		wTx = 4 * cosf(t / 2);
+				//		wTy = 4 * sinf(t / 2);
+				//		wTz = 10.0f;
+		}
+
+	void Draw() {
+		mat4 Mscale(sx, 0, 0, 0,
+					0, sy, 0, 0,
+					0, 0, 1, 0,
+					0, 0, 0, 1); // model matrix
+
+		mat4 Mtranslate(1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						wTx, wTy, wTz, 1); // model matrix
+
+		mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, 3);	// draw a single triangle with vertices defined in vao
+		}
+	};
+
 class Snake{
+	std::vector<Triangle> triangles;//itt tartom a kigyot alkoto haromszogeket
+
+	float maxRadius = 1.5f;
+	float neckRadius = 0.5f;
+
+	//megadja a profilgorbe sugarat
+	//parameter a gorbe ts parameterei menten fog menni
+	float getRadius(float t){
+		if(gerincgorbe.ts[0] < t && gerincgorbe.ts[1] > t){
+			return t;
+		}
+
+		int size = gerincgorbe.ts.size();
+		float utolso = gerincgorbe.ts[size - 1];
+		float utolsoelotti = gerincgorbe.ts[size - 2];
+
+		if(utolso > t && utolsoelotti < t){
+			float kulonbseg = fabs(utolso - t);
+
+			float rad = 0.5 + kulonbseg;
+
+			if (rad < maxRadius)
+				return rad;
+		}
+		return maxRadius;
+	}
 
 public:
 	CatmullRomSpline gerincgorbe;	//kigyo gerincgorbeje
-	float radius = 3.0f;			//kigyo profilgorbejenek sugara
+	
 
+	void Create(){
+		for(int i = 0; i < triangles.size(); i++){
+			triangles[i].Create();
+		}
+	}
 
 
 };
@@ -567,86 +681,7 @@ public:
 	}
 };
 
-class Triangle {
-public:
-	unsigned int vao;	// vertex array object id
-	float sx = 1, sy = 1;		// scaling
-	float wTx = 0, wTy = 0, wTz = 0;// translation
 
-	vec3 A = vec3(-5, 0, 0);
-	vec3 B = vec3(5, 0, 0);
-	vec3 C = vec3(0, 8.66, 0);
-
-	vec3 colorA = vec3(1, 0, 0);
-	vec3 colorB = vec3(0, 1, 0);
-	vec3 colorC = vec3(0, 0, 1);	
-
-	void Create() {
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
-
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { A.x, A.y, B.x, B.y, C.x, C.y };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-					 sizeof(vertexCoords), // number of the vbo in bytes
-					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-							  2, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
-
-											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 
-			colorA.x, colorA.y, colorA.z,  
-			colorB.x, colorB.y, colorB.z, 
-			colorC.x, colorC.y, colorC.z};	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
-
-																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
-		}
-
-	void Animate(float t) {
-		sx = 1; // sinf(t);
-		sy = 1; // cosf(t);
-//		wTx = 4 * cosf(t / 2);
-//		wTy = 4 * sinf(t / 2);
-//		wTz = 10.0f;
-		}
-
-	void Draw() {
-		mat4 Mscale(sx, 0, 0, 0,
-					0, sy, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						wTx, wTy, wTz, 1); // model matrix
-
-		mat4 MVPTransform = Mscale * Mtranslate * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 3);	// draw a single triangle with vertices defined in vao
-		}
-	};
 
 Triangle triangle1;
 Triangle triangle2;
