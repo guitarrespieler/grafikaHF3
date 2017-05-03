@@ -209,7 +209,9 @@ mat4 zRotate(float zAngle) {
 }
 
 struct RenderState{
-	mat4 M, V, P;
+	mat4 M, Minv, V, P;
+	vec3 wEye;
+	Light light;
 };
 
 class Shader{
@@ -300,6 +302,22 @@ public:
 	}
 };
 
+//pontfenyforras lesz, type enumot nem csinalok hozza
+class Light{
+	vec3 position = vec3(30,30,-70); //valami default ertek, talan jo is lesz
+	float La, Le = 1000;
+	float Lout;
+public:
+	vec3 getLightDir(vec3 otherPos) { return otherPos - position; }
+	vec3 getInRad(vec3 otherPos){
+		float dist = getDist(otherPos);
+		dist *= dist;
+		return Le - dist;
+	}
+	float getDist(vec3 otherPos){
+		return (otherPos-position).Length();
+	}
+};
 
 class Camera{
 public:
@@ -408,16 +426,6 @@ struct Geometry{
 	}
 
 	void Draw(){
-		mat4 M = scale(sX, sY, sZ) *xRotate(xAngle) * zRotate(zAngle) * translate(tX, tY, tZ);
-
-		mat4 Minv = translate(-tX, -tY, -tZ) * zRotate(-zAngle) * xRotate(-xAngle) * scale(1.0f / sX, 1.0f / sY, 1.0f / sZ);
-
-		mat4 MVP = M * camera.V() * camera.P();
-
-		M.SetUniform(shaderProgram, "M");
-		Minv.SetUniform(shaderProgram, "Minv");
-		MVP.SetUniform(shaderProgram, "MVP");
-
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 		glDrawArrays(GL_TRIANGLES, 0, nVtx);	// draw a single triangle with vertices defined in vao
 	}
@@ -466,6 +474,28 @@ struct ParamSurface : Geometry{
 
 		//felszabaditjuk, mar nem kell
 		delete[] vtxData;
+	}
+};
+
+class Sphere: public ParamSurface{
+	vec3 center;
+	float radius;
+
+	VertexData genVertexData(float u, float v){
+		VertexData data;
+
+		data.normal = vec3(cos(u * 2 * M_PI)*sin(v * M_PI),
+						   sin(u * 2 * M_PI)*sin(v * M_PI),
+						   cos(v*M_PI));
+		data.position = data.normal * radius + center;
+		data.u = u;
+		data.v = v;
+
+		return data;
+	}
+public:
+	Sphere(vec3 c, float r):ParamSurface(), center(c), radius(r){
+		Create(16, 8);
 	}
 };
 
@@ -559,12 +589,9 @@ public:
 	}
 };
 
-class Snake{
-	GLuint vao, vbo;        // vertex array object, vertex buffer object	
-	std::vector<float> trianglesData;//itt tartom a kigyot alkoto haromszogek vertexeit es fragmentjeit
-	
-	float maxRadius = 2.0f;
-	float neckRadius = 1.0f;
+class Snake: public ParamSurface{
+	const float maxRadius = 2.0f;
+	const float neckRadius = 1.0f;
 
 	//megadja a profilgorbe sugarat
 	//parameter a gorbe ts parameterei menten fog menni
@@ -591,72 +618,30 @@ class Snake{
 		return maxRadius;
 	}
 
-
-	//letrehozza a kigyo testet alkoto haromszogeket
-	void generateTriangles(){
-		trianglesData.clear();
-		int tsSize = gerincgorbe.ts.size();
-
-		float tNovekmeny = 0.1f;
-		float szogNovekmeny = 30.0f;
-
-		for(float t = 0.0f; t < gerincgorbe.ts[tsSize - 1] - tNovekmeny; t += tNovekmeny){
-			vec3 center1 = gerincgorbe.r(t);							//ez lesz a kor kozepe
-			vec3 center2 = gerincgorbe.r(t + tNovekmeny);				//ez a kovetkezonek a kozepe
-			float sugar1 = getRadius(t);								//ez lesz a kor sugara
-			float sugar2 = getRadius(t + tNovekmeny);					//ez a kovetkezonek a sugara
-
-			for(float szog = 0.0f; szog <= 360; szog+= szogNovekmeny){	
-				vec3 A = getSurfacePoint(center1, szog, sugar1);
-				vec3 B = getSurfacePoint(center1, szog + szogNovekmeny, sugar1);
-				vec3 C = getSurfacePoint(center2, szog, sugar2);
-				vec3 D = getSurfacePoint(center2, szog + szogNovekmeny, sugar2);
-
-				//vec3 colorA = getSurfacePointColor(center1, szog, sugar1);
-				//vec3 colorB = getSurfacePointColor(center1, szog + szogNovekmeny, sugar1);
-				//vec3 colorC = getSurfacePointColor(center2, szog, sugar2);
-				//vec3 colorD = getSurfacePointColor(center2, szog + szogNovekmeny, sugar2);
-				
-				vec3 colorA = vec3(0, 0, 0);
-				vec3 colorB = vec3(0, 0.8, 0.1);
-				vec3 colorC = vec3(0, 0.8, 0.1);
-				vec3 colorD = vec3(0,0,0);
-
-				writeVertexDataToVector(A, B, C,colorA,colorB,colorC);
-				writeVertexDataToVector(B, C, D,colorB,colorC,colorD);
-			}
-		}
-	}
-
-	vec3 getSurfacePoint(vec3 center, float angleInDegrees, float radius){
+	vec3 getSurfacePoint(vec3 center, float angleInDegrees, float radius) {
 		float angleInRadian = angleInDegrees * (M_PI / 180);
 		float x = center.x + radius * cosf(angleInRadian);
 		float y = center.y;
 		float z = center.z + radius * sinf(angleInRadian);
 
-		return vec3(x,y,z);
+		return vec3(x, y, z);
+		}
+
+	VertexData genVertexData(float t, float angle){//itt a szog 360-nal osztva van a create fv miatt, majd vissza kell szorozni
+		vec3 center = gerincgorbe.r(t);
+		float sugar = getRadius(t);
+
+		float angle360 = angle * 360.0f;
+
+		VertexData data;
+		data.position = getSurfacePoint(center, angle360, sugar);
+		data.normal = (data.position - center).normalize();
+		data.u = t;
+		data.v = angle;
+
+		return data;
 	}
 
-	void writeVertexDataToVector(vec3 A, vec3 B, vec3 C,vec3 colorA, vec3 colorB, vec3 colorC) {
-		trianglesData.push_back(A.x);
-		trianglesData.push_back(A.y);
-		trianglesData.push_back(A.z);
-		trianglesData.push_back(B.x);
-		trianglesData.push_back(B.y);
-		trianglesData.push_back(B.z);
-		trianglesData.push_back(C.x);
-		trianglesData.push_back(C.y);
-		trianglesData.push_back(C.z);
-		trianglesData.push_back(colorA.x);
-		trianglesData.push_back(colorA.y);
-		trianglesData.push_back(colorA.z);
-		trianglesData.push_back(colorB.x);
-		trianglesData.push_back(colorB.y);
-		trianglesData.push_back(colorB.z);
-		trianglesData.push_back(colorC.x);
-		trianglesData.push_back(colorC.y);
-		trianglesData.push_back(colorC.z);
-	}
 public:
 	CatmullRomSpline gerincgorbe = CatmullRomSpline();			//kigyo gerincgorbeje
 	int tX = 5; int tY = 10; int tZ = -30;						//eltolas
@@ -741,10 +726,8 @@ public:
 		sX = 50; sY = 10; sZ = 1;
 		tX = -300; tY = -30; tZ = 50;
 		float xAgle = M_PI_2;
-	}
 
-	void Create(){
-		ParamSurface::Create(50, 50);
+		Create(50, 50);
 	}
 };
 
@@ -826,26 +809,53 @@ Snake snek1;
 Snake snek2;
 Snake snek3;
 
-class Shader{
-	
-};
-
 class Object{
-	RoughMaterial material;
-	Geometry geometry;
-	Shader shader;
-
 public:
+	RoughMaterial *material;
+	Geometry *geometry;
+	Shader *shader;
+
+
 	void Animate(float t){}
 	
-	void Draw(){
-		geometry.Draw();
+	void Draw(RenderState state){
+		state.M = scale(geometry->sX, geometry->sY, geometry->sZ)* xRotate(geometry->xAngle)*
+			zRotate(geometry->zAngle)* translate(geometry->tX, geometry->tY, geometry->tZ);
+		
+		state.Minv = translate(-geometry->tX, -geometry->tY, -geometry->tZ) *
+			zRotate(-geometry->zAngle) * xRotate(-geometry->xAngle) *
+			scale(1.0f / geometry->sX, 1.0f / geometry->sY, 1.0f / geometry->sZ);
+
+		shader->Bind(state);
+		geometry->Draw();
 	}
 };
 
 
 
+class Scene{
+	Light light;
+	
+public:
+	Avatar avatar;
+	std::vector<Object*> objects;
+	
+	void Render(){
+		RenderState state;
+		state.wEye = avatar.cam.wEye;
+		state.V = avatar.cam.V();
+		state.P = avatar.cam.P();
+		state.light = light;
 
+		for (Object* obj : objects)
+			obj->Draw(state);
+	}
+
+	void Animate(float t){
+		for (Object* obj : objects)
+			obj->Animate(t);
+	}
+};
 
 
 
