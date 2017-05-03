@@ -590,6 +590,9 @@ public:
 };
 
 class Snake: public ParamSurface{
+
+	CatmullRomSpline gerincgorbe;	//kigyo gerincgorbeje
+
 	const float maxRadius = 2.0f;
 	const float neckRadius = 1.0f;
 
@@ -643,55 +646,18 @@ class Snake: public ParamSurface{
 	}
 
 public:
-	CatmullRomSpline gerincgorbe = CatmullRomSpline();			//kigyo gerincgorbeje
-	int tX = 5; int tY = 10; int tZ = -30;						//eltolas
-	float zAngle = M_PI_4;										//z koruli elforgatas szoge
+	Snake():ParamSurface(){
+		gerincgorbe = CatmullRomSpline();
+		tX = 5; tY = 10; tZ = -30;
+		zAngle = M_PI_4;
 
-	void Create(){
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &vbo); // Generate 1 vertex buffer object
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// Enable the vertex attribute arrays
-		glEnableVertexAttribArray(0);  // attribute array 0
-		glEnableVertexAttribArray(1);  // attribute array 1
-
-									   // Map attribute array 0 to the vertex data of the interleaved vbo
-		glVertexAttribPointer(0,							//attribute array
-							  3,							//components/attribute
-							  GL_FLOAT,					//component type
-							  GL_FALSE,					//normalize?
-							  3 * sizeof(float),			//stride
-							  reinterpret_cast<void*>(0));//offset
-
-														  // Map attribute array 1 to the color data of the interleaved vbo
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), reinterpret_cast<void*>(9 * sizeof(float)));
-	}
-
-	void Draw(){	
-		if (trianglesData.empty())
-			return;
-
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		// copy data to the GPU
-		glBufferData(GL_ARRAY_BUFFER, trianglesData.size() * sizeof(float), &trianglesData[0], GL_DYNAMIC_DRAW);
-
-
-		mat4 MVPTransform = zRotate(zAngle) * translate(tX,tY,tZ) * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, trianglesData.size());	// draw a single triangle with vertices defined in vao
+		Create(50, 360);
 	}
 
 	void Animate(float t){
 		gerincgorbe.Animate(t);	
-		generateTriangles();
+		
+		Create(50, 360);
 	}
 };
 
