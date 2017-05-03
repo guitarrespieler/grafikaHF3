@@ -92,79 +92,6 @@ void checkLinking(unsigned int program) {
 		}
 	}
 
-/*
-// vertex shader in GLSL
-const char * vertexSource = R"(
-	#version 330
-    precision highp float;
-
-	uniform mat4 MVP;			// Model-View-Projection matrix in row-major format
-
-	layout(location = 0) in vec2 vertexPosition;	// Attrib Array 0
-	layout(location = 1) in vec3 vertexColor;	    // Attrib Array 1
-	out vec3 color;									// output attribute
-
-	void main() {
-		color = vertexColor;														// copy color from input to output
-		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1) * MVP; 		// transform to clipping space
-	}
-)";*/
-
-const char *vertexSource = R"(
-uniform mat4 M, Minv, MVP;
-uniform vec4 wLiPos;
-uniform vec3 wEye;
-
-layout(location = 0) in vec3 vtxPos;	//pos in model sp
-layout(location = 1) in vec3 vtxNorm;	//normal in mod sp
-
-out vec3 wNormal;	//normal in world space
-out vec3 wView;		//view in world space
-out vec3 wLight;	//light dir in world space
-
-void main() {
-	gl_Position = vec4(vtxPos, 1) * MVP;
-	
-	wLight  = wLiPos.xyz * wPos.w - wPos.xyz * wLiPos.w;
-	wView   = wEye * wPos.w - wPos.xyz;
-	wNormal = (Minv - vec4(vtxNorm, 0)).xyz;
-})";
-
-const char *fragmentSource = R"(
-uniform vec3 kd, ks, ka;	//diffuse, specular, ambient ref
-uniform vec3 La, Le;		//ambient and point source rad
-uniform float shine;		//shinines for specular ref
-
-in vec3 wNormal;			//interpolated world sp normal
-in vec3 wView;				//interpolated world sp view
-in vec3 wLight;				//interpolated world sp illum ref
-out vec4 fragmentColor;		//output goes to frame buffer
-
-void main() {
-	vec3 N = normalize(wNormal);
-	vec3 V = normalize(wView);
-	vec3 L = normalize(wLight);
-	vec3 H = normalize(L + V);
-
-	float cost = max(dot(N,L), 0), cosd = max(dot(N,H), 0);
-	vec3 color = ka * La +
-				(kd * cost + ks * pow(cosd, shine)) * Le;
-	fragmentColor = vec4(color, 1);
-})";
-
-/*
-// fragment shader in GLSL
-const char * fragmentSource = R"(
-	#version 330
-    precision highp float;
-
-	in vec3 color;				// variable input: interpolated color of vertex shader
-	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
-
-	void main() {
-		fragmentColor = vec4(color, 1); // extend RGB to RGBA
-	}
-)";*/
 
 // row-major matrix 4x4
 struct mat4 {
@@ -281,6 +208,99 @@ mat4 zRotate(float zAngle) {
 				0, 0, 0, 1);
 }
 
+struct RenderState{
+	mat4 M, V, P;
+};
+
+class Shader{
+	const char *vertexSource = R"(
+uniform mat4 M, Minv, MVP;
+uniform vec4 wLiPos;
+uniform vec3 wEye;
+
+layout(location = 0) in vec3 vtxPos;	//pos in model sp
+layout(location = 1) in vec3 vtxNorm;	//normal in mod sp
+
+out vec3 wNormal;	//normal in world space
+out vec3 wView;		//view in world space
+out vec3 wLight;	//light dir in world space
+
+void main() {
+	gl_Position = vec4(vtxPos, 1) * MVP;
+	
+	wLight  = wLiPos.xyz * wPos.w - wPos.xyz * wLiPos.w;
+	wView   = wEye * wPos.w - wPos.xyz;
+	wNormal = (Minv - vec4(vtxNorm, 0)).xyz;
+})";
+
+	const char *fragmentSource = R"(
+uniform vec3 kd, ks, ka;	//diffuse, specular, ambient ref
+uniform vec3 La, Le;		//ambient and point source rad
+uniform float shine;		//shinines for specular ref
+
+in vec3 wNormal;			//interpolated world sp normal
+in vec3 wView;				//interpolated world sp view
+in vec3 wLight;				//interpolated world sp illum ref
+out vec4 fragmentColor;		//output goes to frame buffer
+
+void main() {
+	vec3 N = normalize(wNormal);
+	vec3 V = normalize(wView);
+	vec3 L = normalize(wLight);
+	vec3 H = normalize(L + V);
+
+	float cost = max(dot(N,L), 0), cosd = max(dot(N,H), 0);
+	vec3 color = ka * La +
+				(kd * cost + ks * pow(cosd, shine)) * Le;
+	fragmentColor = vec4(color, 1);
+})";
+
+	unsigned int shaderProg;
+public:	
+
+	Shader(){ Create(vertexSource, fragmentSource, "fragmentColor");	}
+
+	void Create(const char *vsSrc, const char *fsSrc, const char *fsOutputName){
+		unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
+		if (!vs) {
+			printf("Error in vertex shader creation\n");
+			exit(1);
+			}
+
+		glShaderSource(vs, 1, &vsSrc, NULL);
+		glCompileShader(vs);
+		checkShader(vs, "Vertex shader error");
+
+		unsigned int fs = glCreateShader(GL_FRAGMENT_SHADER);
+		if (!fs) {
+			printf("Error in fragment shader creation\n");
+			exit(1);
+			}
+
+		glShaderSource(fs, 1, &fsSrc, NULL);
+		glCompileShader(fs);
+		checkShader(fs, "Fragment shader error");
+
+		shaderProg = glCreateProgram();
+		if (!shaderProg) {
+			printf("Error in shader program creation\n");
+			exit(1);
+			}
+
+		glAttachShader(shaderProg, vs);
+		glAttachShader(shaderProg, fs);
+
+		glBindFragDataLocation(shaderProg, 0, fsOutputName);
+		glLinkProgram(shaderProg);
+	}
+	void Bind(RenderState &state){
+		glUseProgram(shaderProg);
+		mat4 MVP = state.M * state.V * state.P;
+		MVP.SetUniform(shaderProg, "MVP");
+	}
+};
+
+
 class Camera{
 public:
 	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
@@ -345,10 +365,7 @@ public:
 		lastT = t;
 		if (stepIndex < 0.00001f) return;
 
-		//nem biztos, hogy jo, ha a wEye-t toljuk el,
-		//majd meglassuk (a vak is ezt mondta)
 		cam.zTranslate(10.0f* timediff);
-
 
 		stepIndex -= 10.0f*timediff;
 	}
@@ -358,6 +375,25 @@ Avatar avatar = Avatar(camera);
 // handle of the shader program
 unsigned int shaderProgram;
 
+class RoughMaterial{
+	vec3 kd, ks;
+	float shininess;
+public:
+	vec3 shade(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 inRad){
+		float cosTheta = dot(normal, lightDir);
+		if (cosTheta < 0)
+			return vec3(0, 0, 0);
+		vec3 difRad = inRad * kd * cosTheta;
+		vec3 halfway = (viewDir + lightDir).normalize();
+		float cosDelta = dot(normal, halfway);
+
+		if (cosDelta < 0)
+			return difRad;
+
+		return difRad + inRad * ks * pow(cosDelta, shininess);
+	}
+};
+
 struct Geometry{
 	unsigned int vao, nVtx;
 
@@ -366,7 +402,7 @@ struct Geometry{
 	float xAngle = 0;				//forgatas x korul
 	float zAngle = 0;				//forgatas z korul
 
-	void Create(){
+	Geometry(){
 		glGenVertexArrays(1,&vao); 
 		glBindVertexArray(vao);
 	}
@@ -522,71 +558,6 @@ public:
 		}		
 	}
 };
-
-class Triangle {
-public:
-	unsigned int vao;	// vertex array object id
-	float sX = 1, sY = 1, sZ = 1;		// scaling
-	float tX = 0, tY = 0, tZ = 0;// translation
-	float zAngle = 0.0f;					//z rotate
-
-	vec3 A = vec3(-5, 0, 0);
-	vec3 B = vec3(5, 0, 0);
-	vec3 C = vec3(0, 8.66, 0);
-
-	vec3 colorA = vec3(1, 0, 0);
-	vec3 colorB = vec3(0, 1, 0);
-	vec3 colorC = vec3(0, 0, 1);
-
-	void Create() {
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
-
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { A.x, A.y, A.z, B.x, B.y, B.z, C.x, C.y, C.z};	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-					 sizeof(vertexCoords), // number of the vbo in bytes
-					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-							  3, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
-
-											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = {
-			colorA.x, colorA.y, colorA.z,
-			colorB.x, colorB.y, colorB.z,
-			colorC.x, colorC.y, colorC.z };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
-
-																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
-		}
-
-
-	void Draw() {
-		mat4 MVPTransform = scale(sX,sY,sZ) * zRotate(zAngle) * translate(tX, tY, tZ) * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 3);	// draw a single triangle with vertices defined in vao
-		}
-	};
 
 class Snake{
 	GLuint vao, vbo;        // vertex array object, vertex buffer object	
@@ -744,9 +715,18 @@ class Homok: public ParamSurface{
 		return 5.0f* cosf(x) + 2.0f*sinf(y);
 	}
 
+	//kiszamolja a normalvektort
+	vec3 getNormal(float x, float y){
+		vec3 dx = -5.0f * sinf(x);
+		vec3 dy =  2.0f * cosf(y);
+
+		return dot(dx, dy);
+	}
+
 	VertexData genVertexData(float u, float v){
 		vec3 pos = vec3(u,v, getHeight(u,v));
-		vec3 norm = vec3(0,1,0);
+		vec3 norm = getNormal(u, v);
+
 		VertexData data = VertexData();
 		data.position = pos;
 		data.normal = norm;
@@ -764,8 +744,6 @@ public:
 	}
 
 	void Create(){
-		Geometry::Create();
-
 		ParamSurface::Create(50, 50);
 	}
 };
@@ -838,14 +816,40 @@ public:
 
 
 
-Triangle triangle1;
-Triangle triangle2;
+
+
+
 Pallo pallo;
 Homok homok;
 
 Snake snek1;
 Snake snek2;
 Snake snek3;
+
+class Shader{
+	
+};
+
+class Object{
+	RoughMaterial material;
+	Geometry geometry;
+	Shader shader;
+
+public:
+	void Animate(float t){}
+	
+	void Draw(){
+		geometry.Draw();
+	}
+};
+
+
+
+
+
+
+
+
 
 
 // Initialization, create an OpenGL context
@@ -854,9 +858,6 @@ void onInitialization() {
 
 	// Create objects by setting up their vertex data on the GPU
 	homok.Create();
-
-	triangle1.Create();
-	triangle2.Create();
 
 	pallo.Create();
 
@@ -870,43 +871,7 @@ void onInitialization() {
 	snek2.Create();
 	snek3.Create();
 
-	// Create vertex shader from string
-	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
-	if (!vertexShader) {
-		printf("Error in vertex shader creation\n");
-		exit(1);
-		}
-	glShaderSource(vertexShader, 1, &vertexSource, NULL);
-	glCompileShader(vertexShader);
-	checkShader(vertexShader, "Vertex shader error");
-
-	// Create fragment shader from string
-	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-	if (!fragmentShader) {
-		printf("Error in fragment shader creation\n");
-		exit(1);
-		}
-	glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
-	glCompileShader(fragmentShader);
-	checkShader(fragmentShader, "Fragment shader error");
-
-	// Attach shaders to a single program
-	shaderProgram = glCreateProgram();
-	if (!shaderProgram) {
-		printf("Error in shader program creation\n");
-		exit(1); 
-		}
-	glAttachShader(shaderProgram, vertexShader);
-	glAttachShader(shaderProgram, fragmentShader);
-
-	// Connect the fragmentColor to the frame buffer memory
-	glBindFragDataLocation(shaderProgram, 0, "fragmentColor");	// fragmentColor goes to the frame buffer memory
-
-																// program packaging
-	glLinkProgram(shaderProgram);
-	checkLinking(shaderProgram);
-	// make this program run
-	glUseProgram(shaderProgram);
+	//shader.create
 	}
 
 void onExit() {
@@ -920,8 +885,6 @@ void onDisplay() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
 	homok.Draw();
 
-	triangle1.Draw();
-	triangle2.Draw();
 	pallo.Draw();
 
 	snek3.Draw();
@@ -957,12 +920,6 @@ void onIdle() {
 	float sec = time / 1000.0f;				// convert msec to sec
 
 	avatar.Animate(sec);
-	triangle1.tX = -10 - 4*cosf(2*sec);
-	triangle1.tY = 2 - 4*sinf(2*sec);
-	triangle1.tZ = -15.0f;
-	triangle2.tX = 10 + 4*cosf(2*sec);
-	triangle2.tY = 2 + 4*sinf(2*sec);
-	triangle2.tZ = -50.0f;
 
 	snek1.Animate(sec);
 	snek2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
@@ -1009,6 +966,8 @@ int main(int argc, char * argv[]) {
 	glutKeyboardFunc(onKeyboard);
 	glutKeyboardUpFunc(onKeyboardUp);
 	glutMotionFunc(onMouseMotion);
+
+	glDisable(GL_CULL_FACE);				   //backface culling is off
 
 	glutMainLoop();
 	onExit();
