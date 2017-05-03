@@ -208,13 +208,32 @@ mat4 zRotate(float zAngle) {
 				0, 0, 0, 1);
 }
 
+//pontfenyforras
+struct Light {
+	vec3 position = vec3(30, 30, -70); //valami default ertek, talan jo is lesz
+	float La = 300, Le = 1000;
+
+	vec3 getLightDir(vec3 otherPos) { return otherPos - position; }
+	vec3 getInRad(vec3 otherPos) {
+		float dist = getDist(otherPos);
+		dist *= dist;
+		return Le - dist;
+		}
+	float getDist(vec3 otherPos) {
+		return (otherPos - position).Length();
+		}
+	};
+
 struct RenderState{
 	mat4 M, Minv, V, P;
 	vec3 wEye;
 	Light light;
+
+	vec3 kd, ks, ka;
+	float shine;
 };
 
-class Shader{
+class PerPixelShader{
 	const char *vertexSource = R"(
 uniform mat4 M, Minv, MVP;
 uniform vec4 wLiPos;
@@ -258,9 +277,10 @@ void main() {
 })";
 
 	unsigned int shaderProg;
+
 public:	
 
-	Shader(){ Create(vertexSource, fragmentSource, "fragmentColor");	}
+	PerPixelShader(){ Create(vertexSource, fragmentSource, "fragmentColor");	}
 
 	void Create(const char *vsSrc, const char *fsSrc, const char *fsOutputName){
 		unsigned int vs = glCreateShader(GL_VERTEX_SHADER);
@@ -299,23 +319,22 @@ public:
 		glUseProgram(shaderProg);
 		mat4 MVP = state.M * state.V * state.P;
 		MVP.SetUniform(shaderProg, "MVP");
-	}
-};
+		state.M.SetUniform(shaderProg, "M");
+		state.Minv.SetUniform(shaderProg, "Minv");
+		
+		int loc1 = glGetUniformLocation(shaderProg, "wLiPos");
+		vec4 wLiPos = vec4(state.light.position);
+		//nem lesz jó minden uniformmatrix4fv fuggvennyel sztem
 
-//pontfenyforras lesz, type enumot nem csinalok hozza
-class Light{
-	vec3 position = vec3(30,30,-70); //valami default ertek, talan jo is lesz
-	float La, Le = 1000;
-	float Lout;
-public:
-	vec3 getLightDir(vec3 otherPos) { return otherPos - position; }
-	vec3 getInRad(vec3 otherPos){
-		float dist = getDist(otherPos);
-		dist *= dist;
-		return Le - dist;
-	}
-	float getDist(vec3 otherPos){
-		return (otherPos-position).Length();
+		glUniformMatrix4fv(loc1, 1, GL_TRUE, &wLiPos.v[0]);
+
+		int loc2 = glGetUniformLocation(shaderProg, "wEye");
+		glUniformMatrix4fv(loc2, 1, GL_TRUE, state.wEye);
+
+		int loc2 = glGetUniformLocation(shaderProg, "wEye");
+		glUniformMatrix4fv(loc2, 1, GL_TRUE, state.wEye);
+
+
 	}
 };
 
@@ -360,7 +379,7 @@ public:
 
 class Avatar{
 public:
-	Camera &cam;
+	Camera *cam;
 	float sphereRadius = 50.0f;
 	
 	//lepeshez kellenek
@@ -368,8 +387,6 @@ public:
 	float stepIndex = 0;//ennyi egyseget kell lepni eppen
 	float lastT = 0.0f;//utolso animate hivaskor ezt a parametert kaptuk
 
-
-	Avatar(Camera &camera):cam(camera){}
 
 	void move(){
 		stepIndex += 20; //step 100 unit forward
@@ -389,31 +406,17 @@ public:
 	}
 };
 Camera camera;
-Avatar avatar = Avatar(camera);
+
 // handle of the shader program
 unsigned int shaderProgram;
 
-class RoughMaterial{
-	vec3 kd, ks;
-	float shininess;
-public:
-	vec3 shade(vec3 normal, vec3 viewDir, vec3 lightDir, vec3 inRad){
-		float cosTheta = dot(normal, lightDir);
-		if (cosTheta < 0)
-			return vec3(0, 0, 0);
-		vec3 difRad = inRad * kd * cosTheta;
-		vec3 halfway = (viewDir + lightDir).normalize();
-		float cosDelta = dot(normal, halfway);
-
-		if (cosDelta < 0)
-			return difRad;
-
-		return difRad + inRad * ks * pow(cosDelta, shininess);
-	}
+struct Material{
+	vec3 kd = 5, ks = 5, ka = 5;
+	float shininess = 5;
 };
 
 struct Geometry{
-	unsigned int vao, nVtx;
+	unsigned int vao, nVtx = 0;
 
 	float sX = 1, sY = 1, sZ = 1;	//skalazas
 	float tX = 0, tY = 0, tZ = 0;	//eltolas
@@ -421,7 +424,7 @@ struct Geometry{
 	float zAngle = 0;				//forgatas z korul
 
 	Geometry(){
-		glGenVertexArrays(1,&vao); 
+		glGenVertexArrays(1, &vao);
 		glBindVertexArray(vao);
 	}
 
@@ -429,6 +432,8 @@ struct Geometry{
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 		glDrawArrays(GL_TRIANGLES, 0, nVtx);	// draw a single triangle with vertices defined in vao
 	}
+
+	void Animate(float t){};
 };
 
 struct VertexData{
@@ -481,7 +486,7 @@ class Sphere: public ParamSurface{
 	vec3 center;
 	float radius;
 
-	VertexData genVertexData(float u, float v){
+	VertexData genVertexData(float u, float v)override{
 		VertexData data;
 
 		data.normal = vec3(cos(u * 2 * M_PI)*sin(v * M_PI),
@@ -596,6 +601,8 @@ class Snake: public ParamSurface{
 	const float maxRadius = 2.0f;
 	const float neckRadius = 1.0f;
 
+	float animationOffset = 0;
+
 	//megadja a profilgorbe sugarat
 	//parameter a gorbe ts parameterei menten fog menni
 	float getRadius(float t){
@@ -630,7 +637,7 @@ class Snake: public ParamSurface{
 		return vec3(x, y, z);
 		}
 
-	VertexData genVertexData(float t, float angle){//itt a szog 360-nal osztva van a create fv miatt, majd vissza kell szorozni
+	VertexData genVertexData(float t, float angle)override{//itt a szog 360-nal osztva van a create fv miatt, majd vissza kell szorozni
 		vec3 center = gerincgorbe.r(t);
 		float sugar = getRadius(t);
 
@@ -646,7 +653,7 @@ class Snake: public ParamSurface{
 	}
 
 public:
-	Snake():ParamSurface(){
+	Snake(float animoffset = 0):ParamSurface(),animationOffset(animoffset){
 		gerincgorbe = CatmullRomSpline();
 		tX = 5; tY = 10; tZ = -30;
 		zAngle = M_PI_4;
@@ -674,7 +681,7 @@ class Homok: public ParamSurface{
 		return dot(dx, dy);
 	}
 
-	VertexData genVertexData(float u, float v){
+	VertexData genVertexData(float u, float v)override{
 		vec3 pos = vec3(u,v, getHeight(u,v));
 		vec3 norm = getNormal(u, v);
 
@@ -697,92 +704,39 @@ public:
 	}
 };
 
-class Pallo{
-	unsigned int vao;	// vertex array object id
+class Pallo : public ParamSurface{
+	
+	VertexData genVertexData(float u, float v)override{
+		VertexData data;
 
-	//pallo negy csucsanak koordinatai:
-	vec3 balalso  = vec3(-1.0f, -1.0f, 0);
-	vec3 jobbalso = vec3( 1.0f, -1.0f, 0);
-	vec3 balfelso = vec3(-1.0f,  1.0f, 0);
-	vec3 jobbfelso= vec3( 1.0f,  1.0f, 0);
+		data.position = vec3(u, v, 0);
+		data.normal = vec3(0, 0, 1);
+		data.u = u;
+		data.v = v;
 
-	float angle = -M_PI_2;
-	float sX = 10.0f, sY = 100.0f, sZ = 1;
-	float tX = 0, tY = 0, tZ = 0;
+		return data;
+	}
 
 public:
-	void Create() {
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
+	Pallo():ParamSurface(){
+		sX = 10.0f; sY = 100.0f; sZ = 1;
+		float tX = -50; tY = 0; tZ = 0;
+		xAngle = -M_PI_2;
 
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = { balalso.x, balalso.y, jobbalso.x, jobbalso.y, balfelso.x, balfelso.y,
-										jobbalso.x, jobbalso.y, jobbfelso.x, jobbfelso.y, balfelso.x, balfelso.y};	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-					 sizeof(vertexCoords), // number of the vbo in bytes
-					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-							  2, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
-
-											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16,
-			0.64, 0.16, 0.16};	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
-
-																							// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
-		}
-	void Draw(){
-		mat4 MVPTransform = scale(sX,sY,sZ) * xRotate(angle) * translate(tX, tY, tZ) * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw two triangles with vertices defined in vao
+		Create(100, 100);
 	}
 };
 
-
-
-
-
-
-Pallo pallo;
-Homok homok;
-
-Snake snek1;
-Snake snek2;
-Snake snek3;
-
 class Object{
 public:
-	RoughMaterial *material;
+	Material *material;
 	Geometry *geometry;
-	Shader *shader;
+	PerPixelShader *shader;
 
 
-	void Animate(float t){}
+	void Animate(float t){
+		geometry->Animate(t);
+	}
 	
 	void Draw(RenderState state){
 		state.M = scale(geometry->sX, geometry->sY, geometry->sZ)* xRotate(geometry->xAngle)*
@@ -808,9 +762,9 @@ public:
 	
 	void Render(){
 		RenderState state;
-		state.wEye = avatar.cam.wEye;
-		state.V = avatar.cam.V();
-		state.P = avatar.cam.P();
+		state.wEye = avatar.cam->wEye;
+		state.V = avatar.cam->V();
+		state.P = avatar.cam->P();
 		state.light = light;
 
 		for (Object* obj : objects)
@@ -818,12 +772,19 @@ public:
 	}
 
 	void Animate(float t){
+		avatar.Animate(t);
+
 		for (Object* obj : objects)
 			obj->Animate(t);
 	}
+
+	~Scene(){
+		for (Object* obj : objects)
+			delete obj;
+	}
 };
 
-
+Scene scene;
 
 
 
@@ -833,21 +794,41 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
-	homok.Create();
 
-	pallo.Create();
+	Object *homok = new Object();
+	homok->geometry = new Homok();
+	homok->material = new Material();
+	homok->shader = new PerPixelShader();
+	scene.objects.push_back(homok);
 
-	snek2.zAngle *= -1.0f;
-	snek2.tX *= -1.0f;
-	snek2.tZ = -60;
+	Object *pallo = new Object();
+	pallo->geometry = new Pallo();
+	pallo->material = new Material();
+	pallo->shader = new PerPixelShader();
+	scene.objects.push_back(pallo);
 
-	snek3.tZ = -100;
+	Object *snek1 = new Object();
+	snek1->geometry = new Snake();
+	snek1->material = new Material();
+	snek1->shader = new PerPixelShader();
+	scene.objects.push_back(snek1);
 
-	snek1.Create();
-	snek2.Create();
-	snek3.Create();
+	Object *snek2 = new Object();
+	snek2->geometry = new Snake(1.0f);
+	snek2->material = new Material();
+	snek2->shader = new PerPixelShader();
+	snek2->geometry->zAngle *= -1.0f;
+	snek2->geometry->tX *= -1.0f;
+	snek2->geometry->tZ = -60;
+	scene.objects.push_back(snek2);
 
-	//shader.create
+	Object *snek3 = new Object();
+	snek3->geometry = new Snake(2.0f);
+	snek3->material = new Material();
+	snek3->shader = new PerPixelShader();
+	snek3->geometry->tZ = -100;
+	scene.objects.push_back(snek3);
+
 	}
 
 void onExit() {
@@ -859,14 +840,9 @@ void onExit() {
 void onDisplay() {
 	glClearColor(0, 0.9, 0.9, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
-	homok.Draw();
-
-	pallo.Draw();
-
-	snek3.Draw();
-	snek2.Draw();
-	snek1.Draw();
 	
+	scene.Render();
+
 	glutSwapBuffers();									// exchange the two buffers
 	}
 
@@ -875,9 +851,9 @@ void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == 'd') glutPostRedisplay();         // if d, invalidate display, i.e. redraw
 	
 	if (key == ' ') {
-		avatar.move();
-		}
+		scene.avatar.move();
 	}
+}
 
 // Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
@@ -895,11 +871,7 @@ void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
 	float sec = time / 1000.0f;				// convert msec to sec
 
-	avatar.Animate(sec);
-
-	snek1.Animate(sec);
-	snek2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
-	snek3.Animate(sec + 2);
+	scene.Animate(sec);
 
 	glutPostRedisplay();					// redraw the scene
 	}
