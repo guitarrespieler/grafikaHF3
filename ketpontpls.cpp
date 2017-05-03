@@ -92,6 +92,7 @@ void checkLinking(unsigned int program) {
 		}
 	}
 
+/*
 // vertex shader in GLSL
 const char * vertexSource = R"(
 	#version 330
@@ -107,8 +108,51 @@ const char * vertexSource = R"(
 		color = vertexColor;														// copy color from input to output
 		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1) * MVP; 		// transform to clipping space
 	}
-)";
+)";*/
 
+const char *vertexSource = R"(
+uniform mat4 M, Minv, MVP;
+uniform vec4 wLiPos;
+uniform vec3 wEye;
+
+layout(location = 0) in vec3 vtxPos;	//pos in model sp
+layout(location = 1) in vec3 vtxNorm;	//normal in mod sp
+
+out vec3 wNormal;	//normal in world space
+out vec3 wView;		//view in world space
+out vec3 wLight;	//light dir in world space
+
+void main() {
+	gl_Position = vec4(vtxPos, 1) * MVP;
+	
+	wLight  = wLiPos.xyz * wPos.w - wPos.xyz * wLiPos.w;
+	wView   = wEye * wPos.w - wPos.xyz;
+	wNormal = (Minv - vec4(vtxNorm, 0)).xyz;
+})";
+
+const char *fragmentSource = R"(
+uniform vec3 kd, ks, ka;	//diffuse, specular, ambient ref
+uniform vec3 La, Le;		//ambient and point source rad
+uniform float shine;		//shinines for specular ref
+
+in vec3 wNormal;			//interpolated world sp normal
+in vec3 wView;				//interpolated world sp view
+in vec3 wLight;				//interpolated world sp illum ref
+out vec4 fragmentColor;		//output goes to frame buffer
+
+void main() {
+	vec3 N = normalize(wNormal);
+	vec3 V = normalize(wView);
+	vec3 L = normalize(wLight);
+	vec3 H = normalize(L + V);
+
+	float cost = max(dot(N,L), 0), cosd = max(dot(N,H), 0);
+	vec3 color = ka * La +
+				(kd * cost + ks * pow(cosd, shine)) * Le;
+	fragmentColor = vec4(color, 1);
+})";
+
+/*
 // fragment shader in GLSL
 const char * fragmentSource = R"(
 	#version 330
@@ -120,7 +164,7 @@ const char * fragmentSource = R"(
 	void main() {
 		fragmentColor = vec4(color, 1); // extend RGB to RGBA
 	}
-)";
+)";*/
 
 // row-major matrix 4x4
 struct mat4 {
@@ -148,7 +192,12 @@ public:
 		return result;
 		}
 	operator float*() { return &m[0][0]; }
-	};
+
+	void SetUniform(unsigned shaderProg, char *name){
+		int loc = glGetUniformLocation(shaderProg, name);
+		glUniformMatrix4fv(loc, 1, GL_TRUE, &m[0][0]);
+	}
+};
 
 struct vec3 {
 	float x, y, z;
@@ -323,12 +372,15 @@ struct Geometry{
 	}
 
 	void Draw(){
-		mat4 MVPTransform = scale(sX, sY, sZ) *xRotate(xAngle) * zRotate(zAngle) * translate(tX, tY, tZ) * camera.V() * camera.P();
+		mat4 M = scale(sX, sY, sZ) *xRotate(xAngle) * zRotate(zAngle) * translate(tX, tY, tZ);
 
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
+		mat4 Minv = translate(-tX, -tY, -tZ) * zRotate(-zAngle) * xRotate(-xAngle) * scale(1.0f / sX, 1.0f / sY, 1.0f / sZ);
+
+		mat4 MVP = M * camera.V() * camera.P();
+
+		M.SetUniform(shaderProgram, "M");
+		Minv.SetUniform(shaderProgram, "Minv");
+		MVP.SetUniform(shaderProgram, "MVP");
 
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
 		glDrawArrays(GL_TRIANGLES, 0, nVtx);	// draw a single triangle with vertices defined in vao
@@ -345,8 +397,7 @@ struct ParamSurface : Geometry{
 	virtual VertexData genVertexData(float u, float v) = 0;
 	
 	void Create(int N, int M){
-		nVtx = N * M * 6;
-		
+		nVtx = N * M * 6;		
 		unsigned int vbo;
 
 		glGenBuffers(1, &vbo);
@@ -378,7 +429,7 @@ struct ParamSurface : Geometry{
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, u));
 
 		//felszabaditjuk, mar nem kell
-		//delete[] vtxData;
+		delete[] vtxData;
 	}
 };
 
@@ -717,18 +768,6 @@ public:
 
 		ParamSurface::Create(50, 50);
 	}
-
-	void Draw(){
-		mat4 MVPTransform = scale(sX,sY,sZ) * xRotate(xAngle) * translate(tX,tY,tZ) * camera.V() * camera.P();
-
-		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
-		int location = glGetUniformLocation(shaderProgram, "MVP");
-		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
-		else printf("uniform MVP cannot be set\n");
-
-		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, nVtx);
-	}	
 };
 
 class Pallo{
