@@ -207,13 +207,29 @@ struct vec4 {
 		}
 	};
 
-mat4 translateMtx(float x, float y, float z){
-	return mat4(
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		x, y, z, 1
-	);
+mat4 translate(float x, float y, float z){
+	return mat4(1, 0, 0, 0,
+				0, 1, 0, 0,
+				0, 0, 1, 0,
+				x, y, z, 1);
+}
+mat4 scale(float x, float y, float z){
+	return mat4(x, 0, 0, 0,
+				0, y, 0, 0,
+				0, 0, z, 0,
+				0, 0, 0, 1);
+}
+mat4 xRotate(float xAngle) {
+	return mat4(1, 0, 0, 0,
+				0, cosf(xAngle), -sinf(xAngle), 0,
+				0, sinf(xAngle), cosf(xAngle), 0,
+				0, 0, 0, 1);
+}
+mat4 zRotate(float zAngle) {
+	return mat4(cosf(zAngle), -sinf(zAngle), 0, 0,
+				sinf(zAngle), cosf(zAngle), 0, 0,
+				0, 0, 1, 0,
+				0, 0, 0, 1);
 }
 
 class Camera{
@@ -239,7 +255,7 @@ public:
 
 		vec3 tempVec = wEye * (-1.0f);
 
-		return  translateMtx(tempVec.x, tempVec.y, tempVec.z) *
+		return  translate(tempVec.x, tempVec.y, tempVec.z) *
 						mat4(u.x, v.x, w.x, 0.0f,
 							 u.y, v.y, w.y, 0.0f,
 							 u.z, v.z, w.z, 0.0f,
@@ -293,7 +309,78 @@ Avatar avatar = Avatar(camera);
 // handle of the shader program
 unsigned int shaderProgram;
 
+struct Geometry{
+	unsigned int vao, nVtx;
 
+	float sX = 1, sY = 1, sZ = 1;	//skalazas
+	float tX = 0, tY = 0, tZ = 0;	//eltolas
+	float xAngle = 0;				//forgatas x korul
+	float zAngle = 0;				//forgatas z korul
+
+	void Create(){
+		glGenVertexArrays(1,&vao); 
+		glBindVertexArray(vao);
+	}
+
+	void Draw(){
+		mat4 MVPTransform = scale(sX, sY, sZ) *xRotate(xAngle) * zRotate(zAngle) * translate(tX, tY, tZ) * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, nVtx);	// draw a single triangle with vertices defined in vao
+	}
+};
+
+struct VertexData{
+	vec3 position, normal;
+	float u, v;
+};
+
+struct ParamSurface : Geometry{
+	ParamSurface():Geometry(){}
+	virtual VertexData genVertexData(float u, float v) = 0;
+	
+	void Create(int N, int M){
+		nVtx = N * M * 6;
+		
+		unsigned int vbo;
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+		VertexData *vtxData = new VertexData[nVtx], *pVtx = vtxData;
+
+		for (int i = 0; i < N; i++) {
+			for(int j = 0; j < M; j++){
+				//egyik haromszog
+				*pVtx++ = genVertexData((float)i / N, (float)j / M);
+				*pVtx++ = genVertexData((float)(i+1) / N, (float)j / M);
+				*pVtx++ = genVertexData((float)i / N, (float)(j+1) / M);
+
+				//masik haromszog
+				*pVtx++ = genVertexData((float)(i+1) / N, (float)j / M);
+				*pVtx++ = genVertexData((float)i / N, (float)(j+1) / M);
+				*pVtx++ = genVertexData((float)(i+1) / N, (float)(j+1) / M);
+			}
+		}
+		glBufferData(GL_ARRAY_BUFFER, nVtx * sizeof(VertexData), vtxData, GL_STATIC_DRAW);
+		
+		glEnableVertexAttribArray(0);		//attribArray 0 = POSITION
+		glEnableVertexAttribArray(1);		//attribArray 1 = NORMALVEC
+		glEnableVertexAttribArray(2);		//attribArray 2 = UV
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, position));
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, normal));
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, u));
+
+		//felszabaditjuk, mar nem kell
+		//delete[] vtxData;
+	}
+};
 
 class CatmullRomSpline{
 	vec3 startVelocity = vec3(-1, 0.5, 0); //kezdo sebessegvektor
@@ -388,8 +475,8 @@ public:
 class Triangle {
 public:
 	unsigned int vao;	// vertex array object id
-	float sx = 1, sy = 1;		// scaling
-	float wTx = 0, wTy = 0, wTz = 0;// translation
+	float sX = 1, sY = 1, sZ = 1;		// scaling
+	float tX = 0, tY = 0, tZ = 0;// translation
 	float zAngle = 0.0f;					//z rotate
 
 	vec3 A = vec3(-5, 0, 0);
@@ -438,22 +525,7 @@ public:
 
 
 	void Draw() {
-		mat4 Mscale(sx, 0, 0, 0,
-					0, sy, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						wTx, wTy, wTz, 1); // model matrix
-
-		mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
-					 sinf(zAngle), cosf(zAngle), 0, 0,
-					 0, 0, 1, 0,
-					 0, 0, 0, 1);
-
-		mat4 MVPTransform = Mscale * zRotate * Mtranslate * camera.V() * camera.P();
+		mat4 MVPTransform = scale(sX,sY,sZ) * zRotate(zAngle) * translate(tX, tY, tZ) * camera.V() * camera.P();
 
 		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
 		int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -598,17 +670,8 @@ public:
 		// copy data to the GPU
 		glBufferData(GL_ARRAY_BUFFER, trianglesData.size() * sizeof(float), &trianglesData[0], GL_DYNAMIC_DRAW);
 
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						tX, tY, tZ, 1); // model matrix
 
-		mat4 zRotate(cosf(zAngle), -sinf(zAngle), 0, 0,
-					 sinf(zAngle), cosf(zAngle), 0, 0,
-					 0, 0, 1, 0,
-					 0, 0, 0, 1);
-
-		mat4 MVPTransform = zRotate * Mtranslate * camera.V() * camera.P();
+		mat4 MVPTransform = zRotate(zAngle) * translate(tX,tY,tZ) * camera.V() * camera.P();
 
 		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
 		int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -625,123 +688,38 @@ public:
 	}
 };
 
-class Homok{
-	unsigned int vao;
-	std::vector<float> vertexData; //itt tarolom a felulet pontjait
-	std::vector<float> fragmentData; //itt tarolom a pontok szineit
-
-	int getHeight(const float x,const float z){
-		return 3.0f* cosf(x) + 2.0f*sinf(z);
-
+class Homok: public ParamSurface{
+	float getHeight(const float x,const float y){
+		return 5.0f* cosf(x) + 2.0f*sinf(y);
 	}
 
-	vec3 getColor(const vec3& vec){
-		return vec3(0.83, 0.73, 0.73);
-	}
+	VertexData genVertexData(float u, float v){
+		vec3 pos = vec3(u,v, getHeight(u,v));
+		vec3 norm = vec3(0,1,0);
+		VertexData data = VertexData();
+		data.position = pos;
+		data.normal = norm;
+		data.u = u;
+		data.v = v;
 
-	void saveData(const vec3& point, const vec3& color){
-		vertexData.push_back(point.x);
-		vertexData.push_back(point.y);
-		vertexData.push_back(point.z);
-
-		fragmentData.push_back(color.x);
-		fragmentData.push_back(color.y);
-		fragmentData.push_back(color.z);
-		
-	}
-	//kiszamolja a pontokat es a szineket, feltolti a tarolokat
-	void computeData(){
-		float xNovekmeny = 0.5f;
-		float yNovekmeny = 0.5f;
-
-		for(float x = 0.0f; x < 100; x+= xNovekmeny){
-			for(float y = 0.0f; y < 100; y+= yNovekmeny){
-				int z1 = getHeight(x, y);
-				int z2 = getHeight(x + xNovekmeny, y);
-				int z3 = getHeight(x, y + yNovekmeny);
-				int z4 = getHeight(x + xNovekmeny, y + yNovekmeny);
-				
-				vec3 point1 = vec3(x, y, z1);
-				vec3 point2 = vec3(x + xNovekmeny, y, z2);
-				vec3 point3 = vec3(x, y + yNovekmeny, z3);
-				vec3 point4 = vec3(x + xNovekmeny, y + yNovekmeny, z4);
-
-				vec3 color1 = getColor(point1);
-				vec3 color2 = getColor(point2);
-				vec3 color3 = getColor(point3);
-				vec3 color4 = vec3(0.8, 0, 0);
-				//vec3 color4 = getColor(point4);
-
-				//egyik haromszog
-				saveData(point1, color1);
-				saveData(point2, color2);
-				saveData(point3, color3);
-
-				//masik haromszog
-				saveData(point2, color2);
-				saveData(point3, color3);
-				saveData(point4, color4);
-			}
-		}
+		return data;		
 	}
 
 public:
-	float sX = 25, sY = 5, sZ = 1; //skalazas merteke
-	float tX = -300, tY = -20, tZ = 50; //eltolas merteke
-	float xAngle = M_PI_2;		  //x korul 90 fokkal forgatjuk
+	Homok():ParamSurface(){
+		sX = 50; sY = 10; sZ = 1;
+		tX = -300; tY = -30; tZ = 50;
+		float xAgle = M_PI_2;
+	}
 
 	void Create(){
-		computeData();
+		Geometry::Create();
 
-		glGenVertexArrays(1, &vao);	// create 1 vertex array object
-		glBindVertexArray(vao);		// make it active
-
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
-
-									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-					 vertexData.size(), // number of the vbo in bytes
-					 &vertexData[0],		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0);
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-							  3, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
-
-											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		
-		glBufferData(GL_ARRAY_BUFFER, fragmentData.size(), &fragmentData[0], GL_STATIC_DRAW);	// copy to the GPU
-
-		// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-									   // Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+		ParamSurface::Create(50, 50);
 	}
 
 	void Draw(){
-		mat4 Mscale(sX, 0, 0, 0,
-					0, sY, 0, 0,
-					0, 0, sZ, 0,
-					0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						tX, tY, tZ, 1); // model matrix
-
-		mat4 xRotate(1, 0, 0, 0,
-					 0, cosf(xAngle), -sinf(xAngle), 0,
-					 0, sinf(xAngle), cosf(xAngle), 0,
-					 0, 0, 0, 1);
-
-		mat4 MVPTransform = Mscale * xRotate * Mtranslate * camera.V() * camera.P();
+		mat4 MVPTransform = scale(sX,sY,sZ) * xRotate(xAngle) * translate(tX,tY,tZ) * camera.V() * camera.P();
 
 		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
 		int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -749,9 +727,8 @@ public:
 		else printf("uniform MVP cannot be set\n");
 
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLES, 0, vertexData.size());
-	}
-	
+		glDrawArrays(GL_TRIANGLES, 0, nVtx);
+	}	
 };
 
 class Pallo{
@@ -764,11 +741,8 @@ class Pallo{
 	vec3 jobbfelso= vec3( 1.0f,  1.0f, 0);
 
 	float angle = -M_PI_2;
-	float sx = 10.0f;
-	float sy = 100.0f;
-	float wTx = 0.0f;
-	float wTy = 0.0f;
-	float wTz = 0.0f;
+	float sX = 10.0f, sY = 100.0f, sZ = 1;
+	float tX = 0, tY = 0, tZ = 0;
 
 public:
 	void Create() {
@@ -811,22 +785,7 @@ public:
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
 		}
 	void Draw(){
-		mat4 Mscale(sx, 0, 0, 0,
-					0, sy, 0, 0,
-					0, 0, 1, 0,
-					0, 0, 0, 1); // model matrix
-
-		mat4 Mtranslate(1, 0, 0, 0,
-						0, 1, 0, 0,
-						0, 0, 1, 0,
-						wTx, wTy, wTz, 1); // model matrix
-
-		mat4 xRotate(1, 0, 0, 0,
-					 0, cosf(angle), -sinf(angle), 0,
-					 0, sinf(angle), cosf(angle), 0,
-					 0, 0, 0, 1);
-
-		mat4 MVPTransform = Mscale * xRotate * Mtranslate * camera.V() * camera.P();
+		mat4 MVPTransform = scale(sX,sY,sZ) * xRotate(angle) * translate(tX, tY, tZ) * camera.V() * camera.P();
 
 		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
 		int location = glGetUniformLocation(shaderProgram, "MVP");
@@ -959,12 +918,12 @@ void onIdle() {
 	float sec = time / 1000.0f;				// convert msec to sec
 
 	avatar.Animate(sec);
-	triangle1.wTx = -10 - 4*cosf(2*sec);
-	triangle1.wTy = 2 - 4*sinf(2*sec);
-	triangle1.wTz = -15.0f;
-	triangle2.wTx = 10 + 4*cosf(2*sec);
-	triangle2.wTy = 2 + 4*sinf(2*sec);
-	triangle2.wTz = -50.0f;
+	triangle1.tX = -10 - 4*cosf(2*sec);
+	triangle1.tY = 2 - 4*sinf(2*sec);
+	triangle1.tZ = -15.0f;
+	triangle2.tX = 10 + 4*cosf(2*sec);
+	triangle2.tY = 2 + 4*sinf(2*sec);
+	triangle2.tZ = -50.0f;
 
 	snek1.Animate(sec);
 	snek2.Animate(sec + 1);				//eltolom kicsit a frekvenciat
