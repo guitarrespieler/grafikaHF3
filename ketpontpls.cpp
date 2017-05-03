@@ -220,7 +220,7 @@ class Camera{
 public:
 	vec3 wLookat = vec3(0.0f, 10.0f, 0.0f);
 	vec3 wVup = vec3(0.0f, 1.0f, 0.0f);
-	vec3 wEye = vec3(0.0f, 15.0f, 70.0f);
+	vec3 wEye = vec3(0.0f, 15.0f, 55.0f);
 
 	float fov = M_PI_4; //45 fok
 	float asp = windowWidth / windowHeight;
@@ -512,7 +512,7 @@ class Snake{
 			float sugar1 = getRadius(t);								//ez lesz a kor sugara
 			float sugar2 = getRadius(t + tNovekmeny);					//ez a kovetkezonek a sugara
 
-			for(float szog = 0.0f; szog <= 360; szog+= szogNovekmeny){
+			for(float szog = 0.0f; szog <= 360; szog+= szogNovekmeny){	
 				vec3 A = getSurfacePoint(center1, szog, sugar1);
 				vec3 B = getSurfacePoint(center1, szog + szogNovekmeny, sugar1);
 				vec3 C = getSurfacePoint(center2, szog, sugar2);
@@ -523,10 +523,10 @@ class Snake{
 				//vec3 colorC = getSurfacePointColor(center2, szog, sugar2);
 				//vec3 colorD = getSurfacePointColor(center2, szog + szogNovekmeny, sugar2);
 				
-				vec3 colorA = vec3(0, 0.8, 0.1);
+				vec3 colorA = vec3(0, 0, 0);
 				vec3 colorB = vec3(0, 0.8, 0.1);
 				vec3 colorC = vec3(0, 0.8, 0.1);
-				vec3 colorD = vec3(0, 0.8, 0.1);
+				vec3 colorD = vec3(0,0,0);
 
 				writeVertexDataToVector(A, B, C,colorA,colorB,colorC);
 				writeVertexDataToVector(B, C, D,colorB,colorC,colorD);
@@ -625,6 +625,135 @@ public:
 	}
 };
 
+class Homok{
+	unsigned int vao;
+	std::vector<float> vertexData; //itt tarolom a felulet pontjait
+	std::vector<float> fragmentData; //itt tarolom a pontok szineit
+
+	int getHeight(const float x,const float z){
+		return 3.0f* cosf(x) + 2.0f*sinf(z);
+
+	}
+
+	vec3 getColor(const vec3& vec){
+		return vec3(0.83, 0.73, 0.73);
+	}
+
+	void saveData(const vec3& point, const vec3& color){
+		vertexData.push_back(point.x);
+		vertexData.push_back(point.y);
+		vertexData.push_back(point.z);
+
+		fragmentData.push_back(color.x);
+		fragmentData.push_back(color.y);
+		fragmentData.push_back(color.z);
+		
+	}
+	//kiszamolja a pontokat es a szineket, feltolti a tarolokat
+	void computeData(){
+		float xNovekmeny = 0.5f;
+		float yNovekmeny = 0.5f;
+
+		for(float x = 0.0f; x < 100; x+= xNovekmeny){
+			for(float y = 0.0f; y < 100; y+= yNovekmeny){
+				int z1 = getHeight(x, y);
+				int z2 = getHeight(x + xNovekmeny, y);
+				int z3 = getHeight(x, y + yNovekmeny);
+				int z4 = getHeight(x + xNovekmeny, y + yNovekmeny);
+				
+				vec3 point1 = vec3(x, y, z1);
+				vec3 point2 = vec3(x + xNovekmeny, y, z2);
+				vec3 point3 = vec3(x, y + yNovekmeny, z3);
+				vec3 point4 = vec3(x + xNovekmeny, y + yNovekmeny, z4);
+
+				vec3 color1 = getColor(point1);
+				vec3 color2 = getColor(point2);
+				vec3 color3 = getColor(point3);
+				vec3 color4 = vec3(0.8, 0, 0);
+				//vec3 color4 = getColor(point4);
+
+				//egyik haromszog
+				saveData(point1, color1);
+				saveData(point2, color2);
+				saveData(point3, color3);
+
+				//masik haromszog
+				saveData(point2, color2);
+				saveData(point3, color3);
+				saveData(point4, color4);
+			}
+		}
+	}
+
+public:
+	float sX = 25, sY = 5, sZ = 1; //skalazas merteke
+	float tX = -300, tY = -20, tZ = 50; //eltolas merteke
+	float xAngle = M_PI_2;		  //x korul 90 fokkal forgatjuk
+
+	void Create(){
+		computeData();
+
+		glGenVertexArrays(1, &vao);	// create 1 vertex array object
+		glBindVertexArray(vao);		// make it active
+
+		unsigned int vbo[2];		// vertex buffer objects
+		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+
+									// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
+		
+		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
+					 vertexData.size(), // number of the vbo in bytes
+					 &vertexData[0],		   // address of the data array on the CPU
+					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+										   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		// Data organization of Attribute Array 0 
+		glVertexAttribPointer(0,			// Attribute Array 0
+							  3, GL_FLOAT,  // components/attribute, component type
+							  GL_FALSE,		// not in fixed point format, do not normalized
+							  0, NULL);     // stride and offset: it is tightly packed
+
+											// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
+		
+		glBufferData(GL_ARRAY_BUFFER, fragmentData.size(), &fragmentData[0], GL_STATIC_DRAW);	// copy to the GPU
+
+		// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
+		glEnableVertexAttribArray(1);  // Vertex position
+									   // Data organization of Attribute Array 1
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+	}
+
+	void Draw(){
+		mat4 Mscale(sX, 0, 0, 0,
+					0, sY, 0, 0,
+					0, 0, sZ, 0,
+					0, 0, 0, 1); // model matrix
+
+		mat4 Mtranslate(1, 0, 0, 0,
+						0, 1, 0, 0,
+						0, 0, 1, 0,
+						tX, tY, tZ, 1); // model matrix
+
+		mat4 xRotate(1, 0, 0, 0,
+					 0, cosf(xAngle), -sinf(xAngle), 0,
+					 0, sinf(xAngle), cosf(xAngle), 0,
+					 0, 0, 0, 1);
+
+		mat4 MVPTransform = Mscale * xRotate * Mtranslate * camera.V() * camera.P();
+
+		// set GPU uniform matrix variable MVP with the content of CPU variable MVPTransform
+		int location = glGetUniformLocation(shaderProgram, "MVP");
+		if (location >= 0) glUniformMatrix4fv(location, 1, GL_TRUE, MVPTransform); // set uniform variable MVP to the MVPTransform
+		else printf("uniform MVP cannot be set\n");
+
+		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
+		glDrawArrays(GL_TRIANGLES, 0, vertexData.size());
+	}
+	
+};
+
 class Pallo{
 	unsigned int vao;	// vertex array object id
 
@@ -714,6 +843,7 @@ public:
 Triangle triangle1;
 Triangle triangle2;
 Pallo pallo;
+Homok homok;
 
 Snake snek1;
 Snake snek2;
@@ -725,6 +855,8 @@ void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
 	// Create objects by setting up their vertex data on the GPU
+	homok.Create();
+
 	triangle1.Create();
 	triangle2.Create();
 
@@ -788,6 +920,7 @@ void onExit() {
 void onDisplay() {
 	glClearColor(0, 0.9, 0.9, 0);							// background color 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
+	homok.Draw();
 
 	triangle1.Draw();
 	triangle2.Draw();
